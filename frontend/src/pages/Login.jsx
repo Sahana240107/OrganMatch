@@ -66,7 +66,7 @@ export default function Login() {
                         fontSize: 26, marginBottom: 14, boxShadow: '0 8px 32px rgba(224,92,58,0.35)',
                     }}>🫀</div>
                     <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, letterSpacing: -0.5 }}>
-                        OrganMatch <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 14 }}>2.0</span>
+                        OrganMatch <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 14 }}></span>
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 6 }}>
                         National Organ Transplant Platform
