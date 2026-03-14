@@ -2,21 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+// Demo accounts match the 3 roles in the backend + seed data usernames
 const DEMO_ACCOUNTS = [
-    { label: 'National Admin', email: 'admin@notto.gov.in', role: 'national_admin' },
-    { label: 'Hospital Coordinator', email: 'coord@aiims.edu', role: 'hospital_coordinator' },
-    { label: 'Transplant Surgeon', email: 'surgeon@pgimer.edu.in', role: 'transplant_surgeon' },
+    { label: 'National Admin',          username: 'national_admin', role: 'national_admin' },
+    { label: 'Transplant Coordinator',  username: 'aiims_coord',    role: 'transplant_coordinator' },
+    { label: 'Hospital Staff',          username: 'aiims_staff',    role: 'hospital_staff' },
 ];
 
 export default function Login() {
     const { login, isAuthenticated, loading, error } = useAuth();
-    const navigate = useNavigate();
-    const location = useLocation();
-    const from = location.state?.from?.pathname || '/dashboard';
+    const navigate  = useNavigate();
+    const location  = useLocation();
+    const from      = location.state?.from?.pathname || '/dashboard';
 
-    const [email, setEmail] = useState('');
+    const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [focused, setFocused] = useState(null);
+    const [focused,  setFocused]  = useState(null);
 
     useEffect(() => {
         if (isAuthenticated) navigate(from, { replace: true });
@@ -24,13 +25,13 @@ export default function Login() {
 
     async function handleSubmit(e) {
         e.preventDefault();
-        const result = await login(email, password);
+        const result = await login(username, password);
         if (result.success) navigate(from, { replace: true });
     }
 
     function fillDemo(acc) {
-        setEmail(acc.email);
-        setPassword('demo1234');
+        setUsername(acc.username);
+        setPassword('1234');
     }
 
     return (
@@ -42,17 +43,17 @@ export default function Login() {
             <div style={{
                 position: 'absolute', inset: 0, pointerEvents: 'none',
                 background: `
-          radial-gradient(ellipse 60% 50% at 50% 50%, rgba(26,138,116,0.12) 0%, transparent 70%),
-          radial-gradient(ellipse 40% 30% at 15% 80%, rgba(224,92,58,0.08) 0%, transparent 60%)
-        `,
+                  radial-gradient(ellipse 60% 50% at 50% 50%, rgba(26,138,116,0.12) 0%, transparent 70%),
+                  radial-gradient(ellipse 40% 30% at 15% 80%, rgba(224,92,58,0.08) 0%, transparent 60%)
+                `,
             }} />
             {/* Grid */}
             <div style={{
                 position: 'absolute', inset: 0, pointerEvents: 'none',
                 backgroundImage: `
-          linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)
-        `,
+                  linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)
+                `,
                 backgroundSize: '60px 60px',
             }} />
 
@@ -66,7 +67,7 @@ export default function Login() {
                         fontSize: 26, marginBottom: 14, boxShadow: '0 8px 32px rgba(224,92,58,0.35)',
                     }}>🫀</div>
                     <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, letterSpacing: -0.5 }}>
-                        OrganMatch <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 14 }}></span>
+                        OrganMatch
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 6 }}>
                         National Organ Transplant Platform
@@ -94,18 +95,19 @@ export default function Login() {
                     )}
 
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Username field — backend uses username not email */}
                         <div className="form-group">
-                            <label className="form-label">Email address</label>
+                            <label className="form-label">Username</label>
                             <input
-                                type="email"
-                                className={`form-input${focused === 'email' ? ' form-input-focused' : ''}`}
-                                value={email}
-                                onChange={e => setEmail(e.target.value)}
-                                onFocus={() => setFocused('email')}
+                                type="text"
+                                className={`form-input${focused === 'username' ? ' form-input-focused' : ''}`}
+                                value={username}
+                                onChange={e => setUsername(e.target.value)}
+                                onFocus={() => setFocused('username')}
                                 onBlur={() => setFocused(null)}
-                                placeholder="you@hospital.in"
+                                placeholder="national_admin"
                                 required
-                                autoComplete="email"
+                                autoComplete="username"
                             />
                         </div>
 
@@ -137,12 +139,12 @@ export default function Login() {
                     {/* Demo accounts */}
                     <div style={{ marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 20 }}>
                         <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            Demo Accounts
+                            Demo Accounts — password: Test@1234
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {DEMO_ACCOUNTS.map(acc => (
                                 <button
-                                    key={acc.email}
+                                    key={acc.username}
                                     onClick={() => fillDemo(acc)}
                                     style={{
                                         background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
@@ -155,7 +157,7 @@ export default function Login() {
                                 >
                                     <div>
                                         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', textAlign: 'left' }}>{acc.label}</div>
-                                        <div style={{ fontSize: 10, color: 'var(--muted)', textAlign: 'left' }}>{acc.email}</div>
+                                        <div style={{ fontSize: 10, color: 'var(--muted)', textAlign: 'left' }}>{acc.username}</div>
                                     </div>
                                     <span style={{ fontSize: 10, color: 'var(--faint)' }}>Fill →</span>
                                 </button>

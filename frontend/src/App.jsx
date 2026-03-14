@@ -9,30 +9,28 @@ import NotificationToast from './components/ui/NotificationToast';
 import { ROLES } from './utils/constants';
 
 /* Lazy-loaded pages */
-const Login = React.lazy(() => import('./pages/Login'));
-const Dashboard = React.lazy(() => import('./pages/Dashboard'));
-const MatchingEngine = React.lazy(() => import('./pages/MatchingEngine'));
-const LocationMap = React.lazy(() => import('./pages/LocationMap'));
-const RegisterDonor = React.lazy(() => import('./pages/RegisterDonor'));
+const Login             = React.lazy(() => import('./pages/Login'));
+const Dashboard         = React.lazy(() => import('./pages/Dashboard'));
+const MatchingEngine    = React.lazy(() => import('./pages/MatchingEngine'));
+const LocationMap       = React.lazy(() => import('./pages/LocationMap'));
+const RegisterDonor     = React.lazy(() => import('./pages/RegisterDonor'));
 const RegisterRecipient = React.lazy(() => import('./pages/RegisterRecipient'));
-const WaitingList = React.lazy(() => import('./pages/WaitingList'));
-const OfferWorkflow = React.lazy(() => import('./pages/OfferWorkflow'));
+const WaitingList       = React.lazy(() => import('./pages/WaitingList'));
+const OfferWorkflow     = React.lazy(() => import('./pages/OfferWorkflow'));
 const TransplantHistory = React.lazy(() => import('./pages/TransplantHistory'));
-const Analytics = React.lazy(() => import('./pages/Analytics'));
+const Analytics         = React.lazy(() => import('./pages/Analytics'));
 
-/* Loading fallback */
 function PageLoader() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 28, marginBottom: 12, animation: 'pulse-dot 1.5s ease-in-out infinite' }}>🫀</div>
+        <div style={{ fontSize: 28, marginBottom: 12 }}>🫀</div>
         <div style={{ fontSize: 12, color: 'var(--muted)' }}>Loading…</div>
       </div>
     </div>
   );
 }
 
-/* App shell layout (sidebar + topbar + outlet for page content) */
 function AppShell() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -41,7 +39,7 @@ function AppShell() {
         <Sidebar />
         <main style={{ flex: 1, overflowY: 'auto' }}>
           <Suspense fallback={<PageLoader />}>
-            <Outlet />   {/* child routes render here */}
+            <Outlet />
           </Suspense>
         </main>
       </div>
@@ -60,30 +58,52 @@ export default function App() {
               {/* Public */}
               <Route path="/login" element={<Login />} />
 
-              {/* Auth guard — redirects to /login if not authenticated */}
+              {/* Auth guard */}
               <Route element={<ProtectedRoute />}>
-                {/* App shell — renders Topbar + Sidebar + <Outlet /> */}
                 <Route element={<AppShell />}>
                   <Route index element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/matching" element={<MatchingEngine />} />
-                  <Route path="/matching/:organId" element={<MatchingEngine />} />
-                  <Route path="/map" element={<LocationMap />} />
-                  <Route path="/donors/register" element={<RegisterDonor />} />
-                  <Route path="/recipients/register" element={<RegisterRecipient />} />
+                  <Route path="/dashboard"           element={<Dashboard />} />
+                  <Route path="/matching"            element={<MatchingEngine />} />
+                  <Route path="/matching/:organId"   element={<MatchingEngine />} />
+                  <Route path="/map"                 element={<LocationMap />} />
+
+                  {/* hospital_staff + national_admin only */}
+                  <Route path="/donors/register" element={
+                    <ProtectedRoute roles={[ROLES.HOSPITAL_STAFF, ROLES.NATIONAL_ADMIN]}>
+                      <RegisterDonor />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/recipients/register" element={
+                    <ProtectedRoute roles={[ROLES.HOSPITAL_STAFF, ROLES.NATIONAL_ADMIN]}>
+                      <RegisterRecipient />
+                    </ProtectedRoute>
+                  } />
+
+                  {/* coordinator + national_admin */}
                   <Route path="/waiting-list" element={<WaitingList />} />
-                  <Route path="/offers" element={<OfferWorkflow />} />
-                  <Route path="/offers/:offerId" element={<OfferWorkflow />} />
+                  <Route path="/offers"       element={
+                    <ProtectedRoute roles={[ROLES.TRANSPLANT_COORDINATOR, ROLES.NATIONAL_ADMIN]}>
+                      <OfferWorkflow />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/offers/:offerId" element={
+                    <ProtectedRoute roles={[ROLES.TRANSPLANT_COORDINATOR, ROLES.NATIONAL_ADMIN]}>
+                      <OfferWorkflow />
+                    </ProtectedRoute>
+                  } />
+
+                  {/* all authenticated — history visible to coordinator + admin + auditor */}
                   <Route path="/history" element={<TransplantHistory />} />
+
+                  {/* national_admin only */}
                   <Route path="/analytics" element={
-                    <ProtectedRoute roles={[ROLES.NATIONAL_ADMIN, ROLES.REGIONAL_COORDINATOR]}>
+                    <ProtectedRoute roles={[ROLES.NATIONAL_ADMIN]}>
                       <Analytics />
                     </ProtectedRoute>
                   } />
                 </Route>
               </Route>
 
-              {/* Catch-all */}
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </Suspense>
