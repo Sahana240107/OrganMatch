@@ -1,175 +1,101 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-
-// Demo accounts match the 3 roles in the backend + seed data usernames
-const DEMO_ACCOUNTS = [
-    { label: 'National Admin', username: 'national_admin', role: 'national_admin' },
-    { label: 'Transplant Coordinator', username: 'aiims_coord', role: 'transplant_coordinator' },
-    { label: 'Hospital Staff', username: 'aiims_staff', role: 'hospital_staff' },
-];
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
-    const { login, isAuthenticated, loading, error } = useAuth();
-    const navigate = useNavigate();
-    const location = useLocation();
-    const from = location.state?.from?.pathname || '/dashboard';
+  const { login }   = useAuth()
+  const navigate    = useNavigate()
+  const [form, setForm]     = useState({ username: '', password: '' })
+  const [error, setError]   = useState('')
+  const [loading, setLoading] = useState(false)
 
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
-    const [focused, setFocused] = useState(null);
-
-    useEffect(() => {
-        if (isAuthenticated) navigate(from, { replace: true });
-    }, [isAuthenticated, navigate, from]);
-
-    async function handleSubmit(e) {
-        e.preventDefault();
-        const result = await login(username, password);
-        if (result.success) navigate(from, { replace: true });
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    try {
+      await login(form.username, form.password)
+      navigate('/')
+    } catch (err) {
+      setError(err.message || 'Login failed')
+    } finally {
+      setLoading(false)
     }
+  }
 
-    function fillDemo(acc) {
-        setUsername(acc.username);
-        setPassword('1234');
-    }
+  return (
+    <div style={{
+      minHeight: '100vh', background: 'var(--bg)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      {/* Background grid */}
+      <div style={{
+        position: 'fixed', inset: 0, pointerEvents: 'none',
+        backgroundImage: 'linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px)',
+        backgroundSize: '48px 48px',
+      }} />
 
-    return (
-        <div style={{
-            minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'var(--bg)', position: 'relative', overflow: 'hidden',
-        }}>
-            {/* Background glows */}
-            <div style={{
-                position: 'absolute', inset: 0, pointerEvents: 'none',
-                background: `
-                  radial-gradient(ellipse 60% 50% at 50% 50%, rgba(26,138,116,0.12) 0%, transparent 70%),
-                  radial-gradient(ellipse 40% 30% at 15% 80%, rgba(224,92,58,0.08) 0%, transparent 60%)
-                `,
-            }} />
-            {/* Grid */}
-            <div style={{
-                position: 'absolute', inset: 0, pointerEvents: 'none',
-                backgroundImage: `
-                  linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)
-                `,
-                backgroundSize: '60px 60px',
-            }} />
-
-            <div style={{ position: 'relative', width: '100%', maxWidth: 420, padding: '0 20px' }}>
-                {/* Logo */}
-                <div style={{ textAlign: 'center', marginBottom: 40 }}>
-                    <div style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: 56, height: 56, borderRadius: 16,
-                        background: 'linear-gradient(135deg,#e05c3a,#c03820)',
-                        fontSize: 26, marginBottom: 14, boxShadow: '0 8px 32px rgba(224,92,58,0.35)',
-                    }}>🫀</div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, letterSpacing: -0.5 }}>
-                        OrganMatch
-                    </div>
-                    <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 6 }}>
-                        National Organ Transplant Platform
-                    </div>
-                </div>
-
-                {/* Card */}
-                <div style={{
-                    background: 'var(--surface)', border: '1px solid var(--border)',
-                    borderRadius: 20, padding: 32,
-                    backdropFilter: 'blur(20px)',
-                }}>
-                    <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 24, fontFamily: 'var(--font-display)' }}>
-                        Sign in to your account
-                    </div>
-
-                    {error && (
-                        <div style={{
-                            background: 'rgba(224,92,58,0.1)', border: '1px solid rgba(224,92,58,0.2)',
-                            borderRadius: 10, padding: '10px 14px', marginBottom: 20,
-                            fontSize: 12, color: '#e05c3a',
-                        }}>
-                            {error}
-                        </div>
-                    )}
-
-                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {/* Username field — backend uses username not email */}
-                        <div className="form-group">
-                            <label className="form-label">Username</label>
-                            <input
-                                type="text"
-                                className={`form-input${focused === 'username' ? ' form-input-focused' : ''}`}
-                                value={username}
-                                onChange={e => setUsername(e.target.value)}
-                                onFocus={() => setFocused('username')}
-                                onBlur={() => setFocused(null)}
-                                placeholder="national_admin"
-                                required
-                                autoComplete="username"
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label className="form-label">Password</label>
-                            <input
-                                type="password"
-                                className={`form-input${focused === 'pass' ? ' form-input-focused' : ''}`}
-                                value={password}
-                                onChange={e => setPassword(e.target.value)}
-                                onFocus={() => setFocused('pass')}
-                                onBlur={() => setFocused(null)}
-                                placeholder="••••••••"
-                                required
-                                autoComplete="current-password"
-                            />
-                        </div>
-
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="btn-primary"
-                            style={{ marginTop: 8, opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
-                        >
-                            {loading ? 'Signing in…' : 'Sign In →'}
-                        </button>
-                    </form>
-
-                    {/* Demo accounts */}
-                    <div style={{ marginTop: 24, borderTop: '1px solid var(--border)', paddingTop: 20 }}>
-                        <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            Demo Accounts — password: Test@1234
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {DEMO_ACCOUNTS.map(acc => (
-                                <button
-                                    key={acc.username}
-                                    onClick={() => fillDemo(acc)}
-                                    style={{
-                                        background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-                                        borderRadius: 8, padding: '9px 14px', cursor: 'pointer',
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        fontFamily: 'var(--font-body)', transition: 'border-color 0.15s',
-                                    }}
-                                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-bright)'}
-                                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                                >
-                                    <div>
-                                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', textAlign: 'left' }}>{acc.label}</div>
-                                        <div style={{ fontSize: 10, color: 'var(--muted)', textAlign: 'left' }}>{acc.username}</div>
-                                    </div>
-                                    <span style={{ fontSize: 10, color: 'var(--faint)' }}>Fill →</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                <div style={{ textAlign: 'center', marginTop: 20, fontSize: 11, color: 'var(--faint)' }}>
-                    NOTTO — Ministry of Health & Family Welfare, India
-                </div>
-            </div>
+      <div style={{ width: 380, position: 'relative', zIndex: 1 }}>
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-32" style={{ marginBottom: 32, alignItems: 'center' }}>
+          <div className="logo-mark" style={{ width: 48, height: 48, borderRadius: 12, marginBottom: 16 }}>
+            <svg viewBox="0 0 24 24" fill="white" width="26" height="26">
+              <path d="M12 2C8 2 5 5 5 8.5c0 2 1 3.8 2.5 5L12 22l4.5-8.5C18 12.3 19 10.5 19 8.5 19 5 16 2 12 2zm0 9a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"/>
+            </svg>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5 }}>OrganMatch</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4, letterSpacing: 1, textTransform: 'uppercase' }}>
+            National Transplant Coordination Platform
+          </div>
         </div>
-    );
+
+        <div className="card" style={{ padding: 28 }}>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label className="form-label">Username</label>
+              <input
+                className="form-control"
+                placeholder="Enter username"
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                autoFocus
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Password</label>
+              <input
+                className="form-control"
+                type="password"
+                placeholder="Enter password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+              />
+            </div>
+
+            {error && (
+              <div style={{
+                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+                borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--red)', marginBottom: 14,
+              }}>{error}</div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ width: '100%', justifyContent: 'center', padding: '10px', fontSize: 14 }}
+              disabled={loading}
+            >
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+          </form>
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: 16, fontSize: 11, color: 'var(--text3)' }}>
+          Authorized personnel only · All access is audited
+        </div>
+      </div>
+    </div>
+  )
 }

@@ -1,141 +1,117 @@
-import React, { useState, useEffect } from 'react';
-import OrganPill from '../components/ui/OrganPill';
-import { useApi } from '../hooks/useApi';
-import { formatDate } from '../utils/formatters';
+import { useState, useEffect } from 'react'
+import { useApi } from '../hooks/useApi'
+import OrganPill from '../components/ui/OrganPill'
+import KPICard from '../components/ui/KPICard'
+import { formatDate } from '../utils/formatters'
 
-const GRAFT_COLOR = {
-    functioning: 'var(--forest)',
-    failed: 'var(--burgundy)',
-    patient_died: 'var(--burgundy)',
-    lost_to_followup: 'var(--amber)',
-    pending: 'var(--text-3)',
-};
-const GRAFT_LABEL = {
-    functioning: 'Functioning', failed: 'Failed',
-    patient_died: 'Patient Died', lost_to_followup: 'Lost to Follow-up', pending: 'Pending',
-};
+const OUTCOME_MAP = {
+  successful:    { cls: 'badge-green',  label: 'Successful' },
+  monitoring:    { cls: 'badge-amber',  label: 'Monitoring' },
+  graft_failure: { cls: 'badge-red',    label: 'Graft Failure' },
+  rejected:      { cls: 'badge-red',    label: 'Rejected' },
+}
+
+function Spinner() {
+  return <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+}
 
 export default function TransplantHistory() {
-    const { get, data, loading } = useApi();
-    const [filterOutcome, setFilterOutcome] = useState('');
-    const [filterOrgan, setFilterOrgan] = useState('');
+  const { request } = useApi()
 
-    useEffect(() => {
-        const params = {};
-        if (filterOrgan) params.organ_type = filterOrgan;
-        get('/transplants', params);
-    }, [filterOrgan]);
+  const [records, setRecords]   = useState([])
+  const [summary, setSummary]   = useState(null)
+  const [loading, setLoading]   = useState(true)
+  const [error,   setError]     = useState('')
+  const [page,    setPage]      = useState(1)
+  const [hasMore, setHasMore]   = useState(false)
 
-    // Real DB fields: transplant_id, transplant_date, organ_type, graft_status,
-    //   donor_name, donor_blood, recipient_name, recipient_blood,
-    //   donor_hospital, recipient_hospital, cold_ischemia_hrs, total_score_at_match
-    const records = data?.data || [];
-    const filtered = filterOutcome ? records.filter(r => r.graft_status === filterOutcome) : records;
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      setError('')
+      try {
+        const [recordData, summaryData] = await Promise.all([
+          request('GET', `/api/transplants?page=${page}&limit=20`),
+          request('GET', '/api/analytics/transplant-summary'),
+        ])
+        setRecords(prev => page === 1 ? (recordData?.transplants || []) : [...prev, ...(recordData?.transplants || [])])
+        setHasMore(recordData?.has_more || false)
+        setSummary(summaryData)
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [page])
 
-    const stats = {
-        total: records.length,
-        functioning: records.filter(r => r.graft_status === 'functioning').length,
-        failed: records.filter(r => r.graft_status === 'failed' || r.graft_status === 'patient_died').length,
-        avgScore: records.length ? (records.reduce((s, r) => s + (r.total_score_at_match || 0), 0) / records.length).toFixed(1) : '—',
-    };
+  return (
+    <div>
+      <div className="grid-4 mb-20">
+        <KPICard label="Total Transplants" value={summary?.total      ?? '—'} color="green" />
+        <KPICard label="1-Year Survival"   value={summary?.survival_rate ? `${summary.survival_rate}%` : '—'} color="blue" />
+        <KPICard label="Avg Ischemic Time" value={summary?.avg_ischemic_hours ? `${summary.avg_ischemic_hours}h` : '—'} color="amber" />
+        <KPICard label="Graft Failures"    value={summary?.graft_failures ?? '—'} color="red" />
+      </div>
 
-    const organTypes = [...new Set(records.map(r => r.organ_type).filter(Boolean))];
-
-    return (
-        <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: -0.3, marginBottom: 4 }}>
-                Transplant History
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 20 }}>Completed transplant records · Live from database</div>
-
-            {/* Stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: 'var(--border)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', overflow: 'hidden', marginBottom: 20 }}>
-                {[
-                    { label: 'Total', value: stats.total, color: 'var(--steel)' },
-                    { label: 'Functioning', value: stats.functioning, color: 'var(--forest)' },
-                    { label: 'Failed', value: stats.failed, color: 'var(--burgundy)' },
-                    { label: 'Avg Match Score', value: stats.avgScore, color: 'var(--sienna)' },
-                ].map(s => (
-                    <div key={s.label} className="kpi-card">
-                        <div className="kpi-label">{s.label}</div>
-                        <div className="kpi-val" style={{ color: s.color, fontSize: 24 }}>{s.value}</div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Filters */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-                {['', 'functioning', 'failed', 'patient_died', 'pending'].map(o => (
-                    <button key={o || 'all'} onClick={() => setFilterOutcome(o)} style={{
-                        padding: '4px 14px', borderRadius: 20, fontSize: 11, fontWeight: 500, cursor: 'pointer', border: '1px solid',
-                        background: filterOutcome === o ? 'var(--burgundy)' : 'transparent',
-                        borderColor: filterOutcome === o ? 'transparent' : 'var(--border)',
-                        color: filterOutcome === o ? '#fff' : 'var(--text-3)',
-                        fontFamily: 'var(--font-body)', transition: 'all 0.12s', textTransform: 'capitalize',
-                    }}>{o === '' ? 'All Outcomes' : GRAFT_LABEL[o] || o}</button>
-                ))}
-                <div style={{ marginLeft: 'auto' }}>
-                    <select value={filterOrgan} onChange={e => setFilterOrgan(e.target.value)} className="form-input" style={{ padding: '4px 10px', fontSize: 11, width: 'auto' }}>
-                        <option value="">All Organ Types</option>
-                        {organTypes.map(o => <option key={o} value={o} style={{ textTransform: 'capitalize' }}>{o}</option>)}
-                    </select>
-                </div>
-            </div>
-
-            {/* Table */}
-            <div className="panel">
-                {loading && <div style={{ padding: 24, textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>}
-                {!loading && filtered.length === 0 && (
-                    <div className="empty-state"><div className="empty-icon">🏆</div>No transplant records found</div>
-                )}
-                {!loading && filtered.length > 0 && (
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '1px solid var(--border-2)' }}>
-                                    {['Organ', 'Donor → Recipient', 'Hospitals', 'Date', 'Cold Ischemia', 'Score', 'Graft Status'].map(h => (
-                                        <th key={h} style={{ padding: '8px 13px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.8, background: 'var(--surface-2)' }}>{h}</th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filtered.map(r => {
-                                    const col = GRAFT_COLOR[r.graft_status] || 'var(--text-3)';
-                                    return (
-                                        <tr key={r.transplant_id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }}
-                                            onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-hover)'}
-                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                            <td style={{ padding: '9px 13px' }}><OrganPill organId={r.organ_type} size="sm" /></td>
-                                            <td style={{ padding: '9px 13px' }}>
-                                                <div style={{ fontSize: 12, fontWeight: 600 }}>{r.donor_name}</div>
-                                                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>→ {r.recipient_name}</div>
-                                            </td>
-                                            <td style={{ padding: '9px 13px' }}>
-                                                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{r.donor_hospital}</div>
-                                                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>→ {r.recipient_hospital}</div>
-                                            </td>
-                                            <td style={{ padding: '9px 13px', fontSize: 11, color: 'var(--text-3)', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>
-                                                {r.transplant_date ? new Date(r.transplant_date).toLocaleDateString('en-IN') : '—'}
-                                            </td>
-                                            <td style={{ padding: '9px 13px', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-                                                {r.cold_ischemia_hrs != null ? `${Number(r.cold_ischemia_hrs).toFixed(1)}h` : '—'}
-                                            </td>
-                                            <td style={{ padding: '9px 13px', fontSize: 12, fontWeight: 700, color: 'var(--forest)', fontFamily: 'var(--font-mono)' }}>
-                                                {r.total_score_at_match != null ? Number(r.total_score_at_match).toFixed(1) : '—'}
-                                            </td>
-                                            <td style={{ padding: '9px 13px' }}>
-                                                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 3, background: `${col}18`, color: col, fontWeight: 700, fontFamily: 'var(--font-mono)', textTransform: 'capitalize' }}>
-                                                    {GRAFT_LABEL[r.graft_status] || r.graft_status}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Transplant Records</span>
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}>Export CSV</button>
         </div>
-    );
+
+        {error && <div style={{ color: 'var(--red)', fontSize: 12, padding: '12px 18px' }}>{error}</div>}
+
+        {loading && page === 1 ? <Spinner /> : (
+          <>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Transplant ID</th><th>Organ</th><th>Donor</th><th>Recipient</th>
+                    <th>Hospital</th><th>Date</th><th>Ischemic Time</th><th>Match Score</th><th>Outcome</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map(t => {
+                    const o = OUTCOME_MAP[t.outcome] || { cls: 'badge-gray', label: t.outcome || '—' }
+                    const scoreColor = t.match_score >= 80 ? 'var(--accent)' : t.match_score >= 65 ? 'var(--blue)' : 'var(--amber)'
+                    const ischemicHrs = t.ischemic_time_minutes ? `${Math.floor(t.ischemic_time_minutes / 60)}h ${t.ischemic_time_minutes % 60}m` : 'N/A'
+                    return (
+                      <tr key={t.transplant_id}>
+                        <td style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>TX-{t.transplant_id}</td>
+                        <td>{t.organ?.organ_type ? <OrganPill type={t.organ.organ_type} /> : '—'}</td>
+                        <td style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>D-{t.donor_id}</td>
+                        <td style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>R-{t.recipient_id}</td>
+                        <td>{t.hospital?.name || '—'}</td>
+                        <td>{formatDate(t.transplant_date)}</td>
+                        <td style={{ fontFamily: 'var(--mono)' }}>{ischemicHrs}</td>
+                        <td>
+                          {t.match_score != null
+                            ? <span style={{ fontFamily: 'var(--mono)', fontWeight: 600, color: scoreColor }}>{t.match_score}</span>
+                            : '—'}
+                        </td>
+                        <td><span className={`badge ${o.cls}`}>{o.label}</span></td>
+                      </tr>
+                    )
+                  })}
+                  {!records.length && (
+                    <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>No transplant records found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {hasMore && (
+              <div style={{ padding: 16, textAlign: 'center' }}>
+                <button className="btn btn-ghost" onClick={() => setPage(p => p + 1)} disabled={loading}>
+                  {loading ? 'Loading…' : 'Load More'}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
 }

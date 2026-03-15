@@ -1,123 +1,95 @@
 /**
- * Format remaining hours/minutes into a human-readable string
- * @param {number} totalMinutes
+ * Format seconds → HH:MM:SS
  */
-export function formatTime(totalMinutes) {
-  if (totalMinutes <= 0) return 'Expired';
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
+export function formatTime(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':')
 }
 
 /**
- * Format seconds into mm:ss countdown
- */
-export function formatCountdown(totalSeconds) {
-  if (totalSeconds <= 0) return '00:00';
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-/**
- * Format distance in km
+ * Format km distance with unit
  */
 export function formatDistance(km) {
-  if (km < 1) return `${Math.round(km * 1000)}m`;
-  return `${km.toLocaleString('en-IN')} km`;
+  if (km == null) return '—'
+  return km >= 1000 ? `${(km / 1000).toFixed(1)} k km` : `${Math.round(km)} km`
 }
 
 /**
- * Format a match score (0-100) with color class
+ * Format a match score to 1 decimal place
  */
 export function formatScore(score) {
-  const num = Number(score);
-  if (num >= 90) return { text: num.toFixed(1), colorClass: 'score-excellent' };
-  if (num >= 75) return { text: num.toFixed(1), colorClass: 'score-good' };
-  if (num >= 60) return { text: num.toFixed(1), colorClass: 'score-fair' };
-  return { text: num.toFixed(1), colorClass: 'score-poor' };
+  return score != null ? Number(score).toFixed(1) : '—'
 }
 
 /**
- * Format ISO date string to readable
+ * Format ISO date string → human readable
  */
 export function formatDate(iso) {
-  if (!iso) return '—';
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  })
+}
+
+/**
+ * Format ISO datetime → date + time
+ */
+export function formatDateTime(iso) {
+  if (!iso) return '—'
   return new Date(iso).toLocaleString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  });
+    hour: '2-digit', minute: '2-digit',
+  })
 }
 
 /**
- * Format date to time-only
+ * Months since a date string
  */
-export function formatTimeOnly(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  });
+export function monthsSince(dateStr) {
+  const start = new Date(dateStr)
+  const now = new Date()
+  const diff = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth())
+  return diff
 }
 
 /**
- * Get viability percentage given remaining hours and max hours
+ * Return CSS class for organ type
  */
-export function getViabilityPct(remainingHours, maxHours) {
-  if (!maxHours || maxHours === 0) return 0;
-  return Math.max(0, Math.min(100, Math.round((remainingHours / maxHours) * 100)));
+export function organClass(type) {
+  const map = {
+    kidney: 'organ-kidney',
+    heart: 'organ-heart',
+    liver: 'organ-liver',
+    lung: 'organ-lung',
+    pancreas: 'organ-pancreas',
+    cornea: 'organ-cornea',
+    bone: 'organ-bone',
+    small_intestine: 'organ-small_intestine',
+  }
+  return map[type] || 'badge-gray'
 }
 
 /**
- * Get viability color based on percentage
+ * Return CSS class for urgency
  */
-export function getViabilityColor(pct) {
-  if (pct > 60) return '#30d9a0';
-  if (pct > 30) return '#f0a940';
-  return '#e05c3a';
+export function urgencyClass(u) {
+  const map = {
+    status_1a: 'urgency-1a',
+    status_1b: 'urgency-1b',
+    status_2: 'urgency-2',
+    status_3: 'urgency-3',
+  }
+  return map[u] || 'urgency-3'
 }
 
 /**
- * Calculate stroke-dashoffset for SVG ring
- * @param {number} pct - 0 to 100
- * @param {number} circumference - SVG circle circumference
+ * Score → color hex for chart fills
  */
-export function ringOffset(pct, circumference = 113) {
-  return circumference * (1 - pct / 100);
-}
-
-/**
- * Format Indian phone number
- */
-export function formatPhone(phone) {
-  if (!phone) return '—';
-  const clean = String(phone).replace(/\D/g, '');
-  if (clean.length === 10) return `+91 ${clean.slice(0, 5)} ${clean.slice(5)}`;
-  return phone;
-}
-
-/**
- * Truncate text
- */
-export function truncate(str, n = 30) {
-  if (!str) return '';
-  return str.length > n ? str.slice(0, n) + '…' : str;
-}
-
-/**
- * Get relative time (e.g. "2 mins ago")
- */
-export function timeAgo(iso) {
-  if (!iso) return '';
-  const diff = Date.now() - new Date(iso).getTime();
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return formatDate(iso);
+export function scoreColor(score) {
+  if (score >= 80) return '#22c55e'
+  if (score >= 60) return '#3b82f6'
+  if (score >= 40) return '#f59e0b'
+  return '#ef4444'
 }

@@ -1,47 +1,48 @@
-import React from 'react';
-import { HLA_ANTIGENS } from '../../utils/constants';
-
 /**
- * HLAInput — 6-field HLA antigen grid
- * @param {object}   value    - { A1: '', A2: '', B7: '', B8: '', DR3: '', DR4: '' }
- * @param {function} onChange - (newValue) => void
- * @param {boolean}  disabled
+ * HLAInput — 6-field HLA antigen grid (A, B, DR, DQ).
+ * value: { hla_a1, hla_a2, hla_b1, hla_b2, hla_dr1, hla_dr2, hla_dq1, hla_dq2 }
  */
-export default function HLAInput({ value = {}, onChange, disabled = false }) {
-    function handleChange(antigen, v) {
-        onChange({ ...value, [antigen]: v });
+export default function HLAInput({ value = {}, onChange }) {
+    const fields = [
+        { locus: 'HLA-A', keys: ['hla_a1', 'hla_a2'], placeholders: ['A*01', 'A*02'] },
+        { locus: 'HLA-B', keys: ['hla_b1', 'hla_b2'], placeholders: ['B*07', 'B*35'] },
+        { locus: 'HLA-DR', keys: ['hla_dr1', 'hla_dr2'], placeholders: ['DR3', 'DR7'] },
+        { locus: 'HLA-DQ', keys: ['hla_dq1', 'hla_dq2'], placeholders: ['DQ1', 'DQ2'] },
+    ]
+
+    function handleChange(key, val) {
+        onChange?.({ ...value, [key]: val })
+    }
+
+    function matchStatus(k1, k2) {
+        const v1 = value[k1], v2 = value[k2]
+        if (!v1 && !v2) return { cls: 'hla-none', label: '— No data' }
+        if (v1 && v2) return { cls: 'hla-full', label: '✓ Both alleles' }
+        return { cls: 'hla-partial', label: '~ Partial' }
     }
 
     return (
-        <div>
-            <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 10, lineHeight: 1.6 }}>
-                Enter HLA antigen values. Leave blank if not typed.
-            </div>
-            <div className="hla-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 }}>
-                {HLA_ANTIGENS.map((ag) => (
-                    <div key={ag} className="hla-item" style={{
-                        background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: 8, textAlign: 'center',
-                        border: value[ag] ? '1px solid rgba(79,156,249,0.3)' : '1px solid transparent',
-                        transition: 'border-color 0.2s',
-                    }}>
-                        <div style={{ fontSize: 10, color: 'var(--faint)', marginBottom: 4 }}>{ag}</div>
-                        <input
-                            type="text"
-                            value={value[ag] || ''}
-                            onChange={(e) => handleChange(ag, e.target.value)}
-                            disabled={disabled}
-                            placeholder="—"
-                            maxLength={5}
-                            style={{
-                                width: '100%', background: 'none', border: 'none', outline: 'none',
-                                textAlign: 'center', fontSize: 13, fontWeight: 700,
-                                color: '#4f9cf9', fontFamily: 'var(--font-body)',
-                                cursor: disabled ? 'not-allowed' : 'text',
-                            }}
-                        />
+        <div className="hla-grid">
+            {fields.map(({ locus, keys, placeholders }) => {
+                const ms = matchStatus(keys[0], keys[1])
+                return (
+                    <div key={locus} className="hla-input-group">
+                        <div className="hla-locus">{locus}</div>
+                        <div className="hla-fields">
+                            {keys.map((k, i) => (
+                                <input
+                                    key={k}
+                                    className="hla-field"
+                                    value={value[k] || ''}
+                                    placeholder={placeholders[i]}
+                                    onChange={(e) => handleChange(k, e.target.value.toUpperCase())}
+                                />
+                            ))}
+                        </div>
+                        <div className={`hla-match ${ms.cls}`}>{ms.label}</div>
                     </div>
-                ))}
-            </div>
+                )
+            })}
         </div>
-    );
+    )
 }
