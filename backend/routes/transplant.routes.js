@@ -1,4 +1,7 @@
 const express = require('express');
 const router  = express.Router();
-router.get('/', (req, res) => res.json({ message: 'transplants route ok' }));
+const { getTransplants } = require('../controllers/transplant.controller');
+
+router.get('/', getTransplants);
+
 module.exports = router;

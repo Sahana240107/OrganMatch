@@ -1,4 +1,7 @@
 const express = require('express');
 const router  = express.Router();
-router.get('/', (req, res) => res.json({ message: 'analytics route ok' }));
+const { getSummary } = require('../controllers/analytics.controller');
+
+router.get('/summary', getSummary);
+
 module.exports = router;

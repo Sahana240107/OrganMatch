@@ -1,5 +1,11 @@
-const express = require('express');
-const router  = express.Router();
-router.get('/',  (req, res) => res.json({ message: 'recipients route ok', user: req.user }));
-router.post('/', (req, res) => res.json({ message: 'recipient created (stub)', body: req.body }));
+const express  = require('express');
+const router   = express.Router();
+const { createRecipient, getWaitingList, updateUrgency } = require('../controllers/recipient.controller');
+const { validate, recipientSchema } = require('../middleware/validate.middleware');
+const { auditLog } = require('../middleware/audit.middleware');
+
+router.post('/',                 validate(recipientSchema), auditLog('recipient_create'), createRecipient);
+router.get('/waiting-list',      getWaitingList);
+router.patch('/:id/urgency',     auditLog('recipient_urgency_update'), updateUrgency);
+
 module.exports = router;
