@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import MatchCard from '../components/ui/MatchCard';
 import OrganPill from '../components/ui/OrganPill';
 import { useApi } from '../hooks/useApi';
+import { BLOOD_GROUPS } from '../utils/constants';
 
 export default function MatchingEngine() {
     const { organId } = useParams();
@@ -17,14 +18,15 @@ export default function MatchingEngine() {
     const [msg, setMsg] = useState(null);
 
     useEffect(() => { getOrgans('/donors/organs/available'); }, []);
-
     useEffect(() => {
         if (selectedOrgan) getMatches(`/matches/${selectedOrgan}`);
     }, [selectedOrgan]);
 
     const organs = organsData?.data || [];
+    // Real DB view fields: match_id, total_score, rank_position, recipient_name, recipient_blood,
+    //   medical_urgency, donor_blood, donor_hospital, score_hla, score_abo, score_urgency,
+    //   score_wait_time, score_distance, distance_km, estimated_transport_hrs
     const matches = matchData?.data || [];
-
     const filtered = filterBlood === 'all' ? matches : matches.filter(m => m.recipient_blood === filterBlood);
     const bloodGroups = ['all', ...new Set(matches.map(m => m.recipient_blood).filter(Boolean))];
 
@@ -34,6 +36,8 @@ export default function MatchingEngine() {
         if (res?.success) {
             setMsg(`✓ Matching complete — ${res.data?.data?.match_count || 0} feasible matches found`);
             getMatches(`/matches/${selectedOrgan}`);
+        } else {
+            setMsg(`✗ ${res?.message || 'Matching failed'}`);
         }
     };
 
@@ -57,8 +61,7 @@ export default function MatchingEngine() {
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                         {selectedOrgan && (
-                            <button className="btn-secondary" style={{ padding: '8px 16px', fontSize: 12 }}
-                                onClick={handleRunMatch} disabled={running}>
+                            <button className="btn-secondary" style={{ padding: '8px 16px', fontSize: 12 }} onClick={handleRunMatch} disabled={running}>
                                 {running ? 'Running…' : '↺ Re-run Match'}
                             </button>
                         )}
@@ -68,12 +71,7 @@ export default function MatchingEngine() {
             </div>
 
             {msg && (
-                <div style={{
-                    padding: '10px 16px', borderRadius: 'var(--r-md)', marginBottom: 16, fontSize: 12, fontWeight: 600,
-                    background: msg.startsWith('✓') ? 'var(--teal-dim)' : 'var(--coral-dim)',
-                    color: msg.startsWith('✓') ? 'var(--teal)' : 'var(--coral)',
-                    border: `1px solid ${msg.startsWith('✓') ? 'rgba(15,212,164,0.2)' : 'rgba(240,90,53,0.2)'}`
-                }}>
+                <div style={{ padding: '9px 14px', borderRadius: 'var(--r-sm)', marginBottom: 16, fontSize: 12, fontWeight: 600, background: msg.startsWith('✓') ? 'var(--forest-dim)' : 'var(--burgundy-dim)', color: msg.startsWith('✓') ? 'var(--forest)' : 'var(--burgundy)', border: `1px solid ${msg.startsWith('✓') ? 'var(--forest-border)' : 'var(--burgundy-border)'}` }}>
                     {msg}
                 </div>
             )}
@@ -87,22 +85,19 @@ export default function MatchingEngine() {
                 {organs.length === 0 ? (
                     <div className="empty-state"><div className="empty-icon">🫀</div>No available organs in database</div>
                 ) : (
-                    <div style={{ padding: '14px 18px', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    <div style={{ padding: '12px 14px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                         {organs.map(o => {
                             const sel = String(selectedOrgan) === String(o.organ_id);
                             return (
-                                <div key={o.organ_id} onClick={() => setSelectedOrgan(o.organ_id)}
-                                    style={{
-                                        padding: '10px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer',
-                                        border: `1px solid ${sel ? 'var(--teal)' : 'var(--border)'}`,
-                                        background: sel ? 'var(--teal-dim)' : 'var(--surface)',
-                                        transition: 'all 0.15s',
-                                    }}>
-                                    <div style={{ fontSize: 12, fontWeight: 600, color: sel ? 'var(--teal)' : 'var(--text)', marginBottom: 3 }}>
-                                        {o.organ_type?.replace(/_/g, ' ')} · {o.blood_group}
-                                    </div>
-                                    <div style={{ fontSize: 10, color: 'var(--text-2)' }}>
-                                        {o.donor_hospital} · {o.hours_remaining != null ? `${Number(o.hours_remaining).toFixed(1)}h left` : ''}
+                                <div key={o.organ_id} onClick={() => setSelectedOrgan(o.organ_id)} style={{
+                                    padding: '9px 14px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                                    border: `1px solid ${sel ? 'var(--burgundy)' : 'var(--border)'}`,
+                                    background: sel ? 'var(--burgundy-dim)' : 'var(--surface)',
+                                    transition: 'all 0.12s',
+                                }}>
+                                    <OrganPill organId={o.organ_type} size="sm" />
+                                    <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
+                                        {o.blood_group} · {o.hours_remaining != null ? `${Number(o.hours_remaining).toFixed(1)}h` : '—'} · {o.donor_city}
                                     </div>
                                 </div>
                             );
@@ -111,73 +106,59 @@ export default function MatchingEngine() {
                 )}
             </div>
 
+            {/* Results */}
             {selectedOrgan && (
                 <>
-                    {/* Donor details */}
-                    {organs.find(o => String(o.organ_id) === String(selectedOrgan)) && (() => {
-                        const o = organs.find(o => String(o.organ_id) === String(selectedOrgan));
-                        return (
-                            <div style={{
-                                background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '16px 20px', marginBottom: 20,
-                                display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 16
-                            }}>
-                                {[
-                                    { label: 'Organ', value: o.organ_type?.replace(/_/g, ' ') },
-                                    { label: 'Blood', value: o.blood_group },
-                                    { label: 'Hospital', value: o.donor_hospital },
-                                    { label: 'City', value: o.donor_city },
-                                    {
-                                        label: 'Viability', value: `${Number(o.hours_remaining || 0).toFixed(1)}h left`,
-                                        color: (o.viability_pct || 100) < 30 ? 'var(--coral)' : 'var(--teal)'
-                                    },
-                                ].map(item => (
-                                    <div key={item.label}>
-                                        <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{item.label}</div>
-                                        <div style={{ fontSize: 13, fontWeight: 600, color: item.color || 'var(--text)', textTransform: 'capitalize' }}>{item.value}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        );
-                    })()}
-
-                    {/* Filter */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 12, color: 'var(--text-2)' }}>Blood filter:</span>
+                    {/* Blood filter */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Filter blood:</div>
                         {bloodGroups.map(bg => (
                             <button key={bg} onClick={() => setFilterBlood(bg)} style={{
-                                padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 500, cursor: 'pointer', border: '1px solid',
-                                background: filterBlood === bg ? 'var(--coral)' : 'transparent',
+                                padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 500,
+                                cursor: 'pointer', border: '1px solid',
+                                background: filterBlood === bg ? 'var(--burgundy)' : 'transparent',
                                 borderColor: filterBlood === bg ? 'transparent' : 'var(--border)',
-                                color: filterBlood === bg ? '#fff' : 'var(--text-2)',
-                                fontFamily: 'var(--font-body)', transition: 'all 0.15s',
-                            }}>{bg === 'all' ? 'All' : bg}</button>
+                                color: filterBlood === bg ? '#fff' : 'var(--text-3)',
+                                fontFamily: 'var(--font-body)', transition: 'all 0.12s',
+                            }}>{bg === 'all' ? 'All' : `🩸 ${bg}`}</button>
                         ))}
-                        <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-2)' }}>{filtered.length} recipient{filtered.length !== 1 ? 's' : ''} ranked</span>
+                        <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>
+                            {filtered.length} match{filtered.length !== 1 ? 'es' : ''} ranked
+                        </div>
                     </div>
 
-                    {/* Match cards */}
-                    {loading ? (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><div className="spinner" /></div>
-                    ) : filtered.length === 0 ? (
-                        <div className="empty-state">
-                            <div className="empty-icon">🔬</div>
-                            No matches found. Try running the matching algorithm or check blood type filters.
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                            {filtered.map((m, i) => (
-                                <MatchCard key={m.match_id} rank={m.rank_position} isTop={i === 0}
+                    {loading && <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><div className="spinner" /></div>}
+
+                    {!loading && filtered.length === 0 && (
+                        <div className="empty-state"><div className="empty-icon">🔬</div>No matches found — try running the matching algorithm</div>
+                    )}
+
+                    {/* Match cards using vw_match_results_detail fields */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {filtered.map((m, i) => {
+                            // Find the organ details for this match
+                            const organ = organs.find(o => String(o.organ_id) === String(selectedOrgan));
+                            return (
+                                <MatchCard
+                                    key={m.match_id}
+                                    rank={m.rank_position}
+                                    isTop={i === 0}
                                     donor={{
-                                        name: m.donor_hospital, blood: m.donor_blood,
-                                        hospital: m.donor_hospital, city: m.donor_city,
+                                        name: m.donor_hospital,
+                                        blood: m.donor_blood,
+                                        hospital: m.donor_hospital,
+                                        city: m.donor_city,
                                         organId: m.organ_type,
-                                        remainingHours: organs.find(o => String(o.organ_id) === String(selectedOrgan))?.hours_remaining,
-                                        maxHours: organs.find(o => String(o.organ_id) === String(selectedOrgan))?.viability_hours,
+                                        remainingHours: organ?.hours_remaining,
+                                        maxHours: organ?.viability_hours,
                                     }}
                                     recipient={{
-                                        name: m.recipient_name, blood: m.recipient_blood,
-                                        hospital: m.recipient_hospital, city: m.recipient_city,
-                                        urgency: m.medical_urgency,
+                                        name: m.recipient_name,
+                                        blood: m.recipient_blood,
+                                        hospital: m.recipient_hospital,
+                                        city: m.recipient_city,
+                                        urgency: m.medical_urgency?.replace('status_', '').toUpperCase(),
+                                        waitDays: null,
                                     }}
                                     scores={{
                                         total: m.total_score,
@@ -189,16 +170,16 @@ export default function MatchingEngine() {
                                     }}
                                     onOffer={() => handleSendOffer(m.match_id)}
                                 />
-                            ))}
-                        </div>
-                    )}
+                            );
+                        })}
+                    </div>
                 </>
             )}
 
             {!selectedOrgan && organs.length > 0 && (
-                <div className="empty-state">
+                <div className="empty-state" style={{ border: '1px dashed var(--border)', borderRadius: 'var(--r-md)' }}>
                     <div className="empty-icon">🔬</div>
-                    Select an organ above to view ranked recipients
+                    Select an organ above to view ranked recipient matches
                 </div>
             )}
         </div>

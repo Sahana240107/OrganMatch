@@ -7,27 +7,23 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
-/* ── Design Tokens ───────────────────────────────────────────── */
 :root {
-    /* ── Backgrounds — warm paper layers */
     --bg: #f5f0e8;
     --bg-2: #efe9dc;
     --bg-3: #e8e1d2;
     --bg-4: #dfd7c6;
     --bg-inv: #1c1410;
 
-    /* ── Surfaces */
     --surface: #faf7f2;
     --surface-2: #f5f0e8;
     --surface-hover: #f0ead9;
     --surface-active: #e8e0cc;
 
-    /* ── Borders — warm ruled lines */
     --border: rgba(100, 75, 45, 0.13);
     --border-2: rgba(100, 75, 45, 0.22);
     --border-3: rgba(100, 75, 45, 0.36);
+    --border-bright: rgba(100, 75, 45, 0.36);
 
-    /* ── Text — ink on parchment */
     --text: #1a1208;
     --text-2: rgba(26, 18, 8, 0.65);
     --text-3: rgba(26, 18, 8, 0.40);
@@ -35,40 +31,35 @@
     --muted: rgba(26, 18, 8, 0.50);
     --faint: rgba(26, 18, 8, 0.32);
 
-    /* ── Burgundy — primary authority color */
     --burgundy: #7c1d2e;
     --burgundy-light: #9e2840;
     --burgundy-dim: rgba(124, 29, 46, 0.10);
     --burgundy-glow: rgba(124, 29, 46, 0.20);
     --burgundy-border: rgba(124, 29, 46, 0.25);
 
-    /* ── Amber — urgency / warning */
     --amber: #b86c0a;
     --amber-light: #d47f0e;
     --amber-dim: rgba(184, 108, 10, 0.10);
     --amber-glow: rgba(184, 108, 10, 0.20);
     --amber-border: rgba(184, 108, 10, 0.25);
 
-    /* ── Forest — success / viable */
     --forest: #1e5c35;
     --forest-light: #267044;
     --forest-dim: rgba(30, 92, 53, 0.09);
     --forest-glow: rgba(30, 92, 53, 0.18);
     --forest-border: rgba(30, 92, 53, 0.22);
 
-    /* ── Steel — informational / neutral */
     --steel: #2c4a6e;
     --steel-light: #375d88;
     --steel-dim: rgba(44, 74, 110, 0.09);
     --steel-glow: rgba(44, 74, 110, 0.18);
     --steel-border: rgba(44, 74, 110, 0.22);
 
-    /* ── Sienna — secondary highlight */
     --sienna: #8b3a1a;
     --sienna-dim: rgba(139, 58, 26, 0.10);
     --sienna-border: rgba(139, 58, 26, 0.22);
 
-    /* ── Legacy aliases so existing JSX doesn't break */
+    /* Legacy aliases so existing JSX component inline styles don't break */
     --coral: var(--burgundy);
     --coral-dim: var(--burgundy-dim);
     --coral-glow: var(--burgundy-glow);
@@ -85,7 +76,9 @@
     --purple-dim: var(--sienna-dim);
     --purple-border: var(--sienna-border);
 
-    /* ── Radii — tight & purposeful */
+    /* Accent for buttons & active states */
+    --accent: var(--burgundy);
+
     --r-xs: 3px;
     --r-sm: 5px;
     --r-md: 7px;
@@ -93,23 +86,16 @@
     --r-xl: 14px;
     --r-2xl: 18px;
 
-    /* ── Typography */
     --font-display: 'Playfair Display', Georgia, serif;
     --font-body: 'IBM Plex Sans', system-ui, sans-serif;
     --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
 
-    /* ── Shadows — warm ink drops */
     --shadow-sm: 0 1px 4px rgba(60, 35, 10, 0.10), 0 1px 2px rgba(60, 35, 10, 0.06);
     --shadow-md: 0 3px 12px rgba(60, 35, 10, 0.12), 0 1px 4px rgba(60, 35, 10, 0.08);
     --shadow-lg: 0 8px 28px rgba(60, 35, 10, 0.14), 0 2px 8px rgba(60, 35, 10, 0.08);
     --shadow-xl: 0 16px 48px rgba(60, 35, 10, 0.18), 0 4px 14px rgba(60, 35, 10, 0.10);
-
-    /* ── Accent alias */
-    --accent: var(--forest);
-    --border-bright: var(--border-2);
 }
 
-/* ── Reset ───────────────────────────────────────────────────── */
 *,
 *::before,
 *::after {
@@ -130,9 +116,7 @@ body {
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
-    /* subtle warm paper grain */
-    background-image:
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.028'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.028'/%3E%3C/svg%3E");
 }
 
 a {
@@ -214,7 +198,7 @@ textarea {
 
 /* ── Sidebar ─────────────────────────────────────────────────── */
 .sidebar {
-    width: 210px;
+    width: 212px;
     flex-shrink: 0;
     background: var(--bg-inv);
     border-right: 1px solid rgba(255, 255, 255, 0.05);
@@ -262,14 +246,14 @@ textarea {
     border-left-color: #9e2840;
 }
 
-.sidebar-item.active .si-icon {
-    opacity: 1;
-}
-
 .si-icon {
     font-size: 13px;
     flex-shrink: 0;
     opacity: 0.7;
+}
+
+.sidebar-item.active .si-icon {
+    opacity: 1;
 }
 
 /* ── Main layout ─────────────────────────────────────────────── */
@@ -291,7 +275,6 @@ textarea {
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 10px;
-    padding-bottom: 2px;
     border-bottom: 1px solid var(--border-2);
     padding-bottom: 14px;
 }
@@ -340,16 +323,6 @@ textarea {
     background: var(--surface-hover);
 }
 
-/* thin colored top rule per card */
-.kpi-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-}
-
 .kpi-label {
     font-size: 10px;
     color: var(--text-3);
@@ -357,7 +330,6 @@ textarea {
     margin-bottom: 7px;
     letter-spacing: 0.8px;
     text-transform: uppercase;
-    font-family: var(--font-body);
 }
 
 .kpi-val {
@@ -389,14 +361,14 @@ textarea {
     transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Layout helpers ──────────────────────────────────────────── */
+/* ── Two-col layout ──────────────────────────────────────────── */
 .two-col {
     display: grid;
     grid-template-columns: 1.55fr 1fr;
     gap: 14px;
 }
 
-/* ── Panel / Card ────────────────────────────────────────────── */
+/* ── Panel ───────────────────────────────────────────────────── */
 .panel {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -471,7 +443,7 @@ textarea {
     border: 1px solid var(--sienna-border);
 }
 
-/* ── Match / Data rows ───────────────────────────────────────── */
+/* ── Match / data rows ───────────────────────────────────────── */
 .match-item {
     padding: 9px 14px;
     border-bottom: 1px solid var(--border);
@@ -552,7 +524,7 @@ textarea {
     letter-spacing: 0.2px;
 }
 
-/* ── Viability section ───────────────────────────────────────── */
+/* ── Viability ───────────────────────────────────────────────── */
 .viability-col {
     padding: 10px 14px;
 }
@@ -863,7 +835,6 @@ textarea {
 
 .btn-primary:active {
     transform: translateY(0);
-    box-shadow: 0 1px 4px var(--burgundy-glow);
 }
 
 .btn-primary:disabled {
@@ -948,7 +919,7 @@ textarea {
     border-bottom: none;
 }
 
-/* ── Status chips ────────────────────────────────────────────── */
+/* ── Chips ───────────────────────────────────────────────────── */
 .chip {
     display: inline-flex;
     align-items: center;
@@ -1031,32 +1002,6 @@ textarea {
     }
 }
 
-/* ── Toast ───────────────────────────────────────────────────── */
-.toast-container {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 900;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    pointer-events: none;
-}
-
-.toast {
-    background: var(--bg-inv);
-    color: rgba(245, 240, 232, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--r-md);
-    padding: 12px 16px;
-    min-width: 260px;
-    max-width: 320px;
-    box-shadow: var(--shadow-xl);
-    animation: toast-in 0.25s cubic-bezier(0.34, 1.4, 0.64, 1);
-    pointer-events: all;
-    font-size: 12.5px;
-}
-
 /* ── Login card ──────────────────────────────────────────────── */
 .login-card {
     background: var(--surface);
@@ -1066,7 +1011,7 @@ textarea {
     box-shadow: var(--shadow-xl);
 }
 
-/* ── Score quality classes ───────────────────────────────────── */
+/* ── Score quality ───────────────────────────────────────────── */
 .score-excellent {
     color: var(--forest);
 }
@@ -1083,7 +1028,7 @@ textarea {
     color: var(--burgundy);
 }
 
-/* ── Text helpers ────────────────────────────────────────────── */
+/* ── Helpers ─────────────────────────────────────────────────── */
 .text-teal {
     color: var(--forest);
 }
@@ -1106,8 +1051,7 @@ textarea {
 
 /* ── Skeleton shimmer ────────────────────────────────────────── */
 .skeleton {
-    background: linear-gradient(90deg,
-            var(--bg-3) 0%, var(--bg-2) 50%, var(--bg-3) 100%);
+    background: linear-gradient(90deg, var(--bg-3) 0%, var(--bg-2) 50%, var(--bg-3) 100%);
     background-size: 200% 100%;
     animation: shimmer 1.4s infinite;
     border-radius: var(--r-sm);
@@ -1136,16 +1080,6 @@ textarea {
     }
 }
 
-@keyframes fade-in {
-    from {
-        opacity: 0;
-    }
-
-    to {
-        opacity: 1;
-    }
-}
-
 @keyframes toast-in {
     from {
         transform: translateX(110%);
@@ -1170,16 +1104,8 @@ textarea {
     }
 }
 
-/* ── Page transitions ────────────────────────────────────────── */
 main>* {
     animation: fade-up 0.22s ease;
-}
-
-/* ── Horizontal rule / divider ───────────────────────────────── */
-hr {
-    border: none;
-    border-top: 1px solid var(--border);
-    margin: 12px 0;
 }
 
 /* ── Responsive ──────────────────────────────────────────────── */
@@ -1200,11 +1126,6 @@ hr {
 
     .dashboard {
         padding: 14px 12px;
-    }
-
-    .kpi-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 0;
     }
 
     .sidebar {

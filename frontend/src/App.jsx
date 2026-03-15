@@ -9,16 +9,16 @@ import NotificationToast from './components/ui/NotificationToast';
 import { ROLES } from './utils/constants';
 
 /* Lazy-loaded pages */
-const Login             = React.lazy(() => import('./pages/Login'));
-const Dashboard         = React.lazy(() => import('./pages/Dashboard'));
-const MatchingEngine    = React.lazy(() => import('./pages/MatchingEngine'));
-const LocationMap       = React.lazy(() => import('./pages/LocationMap'));
-const RegisterDonor     = React.lazy(() => import('./pages/RegisterDonor'));
+const Login = React.lazy(() => import('./pages/Login'));
+const Dashboard = React.lazy(() => import('./pages/Dashboard'));
+const MatchingEngine = React.lazy(() => import('./pages/MatchingEngine'));
+const LocationMap = React.lazy(() => import('./pages/LocationMap'));
+const RegisterDonor = React.lazy(() => import('./pages/RegisterDonor'));
 const RegisterRecipient = React.lazy(() => import('./pages/RegisterRecipient'));
-const WaitingList       = React.lazy(() => import('./pages/WaitingList'));
-const OfferWorkflow     = React.lazy(() => import('./pages/OfferWorkflow'));
+const WaitingList = React.lazy(() => import('./pages/WaitingList'));
+const OfferWorkflow = React.lazy(() => import('./pages/OfferWorkflow'));
 const TransplantHistory = React.lazy(() => import('./pages/TransplantHistory'));
-const Analytics         = React.lazy(() => import('./pages/Analytics'));
+const Analytics = React.lazy(() => import('./pages/Analytics'));
 
 function PageLoader() {
   return (
@@ -62,10 +62,10 @@ export default function App() {
               <Route element={<ProtectedRoute />}>
                 <Route element={<AppShell />}>
                   <Route index element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard"           element={<Dashboard />} />
-                  <Route path="/matching"            element={<MatchingEngine />} />
-                  <Route path="/matching/:organId"   element={<MatchingEngine />} />
-                  <Route path="/map"                 element={<LocationMap />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/matching" element={<MatchingEngine />} />
+                  <Route path="/matching/:organId" element={<MatchingEngine />} />
+                  <Route path="/map" element={<LocationMap />} />
 
                   {/* hospital_staff + national_admin only */}
                   <Route path="/donors/register" element={
@@ -81,7 +81,7 @@ export default function App() {
 
                   {/* coordinator + national_admin */}
                   <Route path="/waiting-list" element={<WaitingList />} />
-                  <Route path="/offers"       element={
+                  <Route path="/offers" element={
                     <ProtectedRoute roles={[ROLES.TRANSPLANT_COORDINATOR, ROLES.NATIONAL_ADMIN]}>
                       <OfferWorkflow />
                     </ProtectedRoute>

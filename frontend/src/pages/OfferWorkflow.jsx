@@ -3,55 +3,56 @@ import { useParams, useNavigate } from 'react-router-dom';
 import OfferTimer from '../components/ui/OfferTimer';
 import OrganPill from '../components/ui/OrganPill';
 import { useApi } from '../hooks/useApi';
+import { OFFER_STATUS } from '../utils/constants';
 import { formatDate } from '../utils/formatters';
 
-const DOT = { accepted: 'var(--teal)', declined: 'var(--coral)', pending: 'var(--amber)', system: 'var(--teal)', done: 'var(--teal)', standby: 'rgba(255,255,255,0.2)' };
+// Real schema offer.status ENUM: 'pending','accepted','declined','timeout','cancelled'
+const DOT_COLORS = { accepted: 'var(--forest)', declined: 'var(--burgundy)', pending: 'var(--amber)', system: 'var(--forest)', timeout: 'var(--burgundy)' };
 
 export default function OfferWorkflow() {
     const { offerId } = useParams();
     const navigate = useNavigate();
-    const { get, data, loading } = useApi();
+    const { get, loading } = useApi();
     const { post: accept, loading: accepting } = useApi();
     const { post: decline, loading: declining } = useApi();
+    const [offer, setOffer] = useState(null);
     const [msg, setMsg] = useState(null);
-    const [localOffer, setLocalOffer] = useState(null);
 
     useEffect(() => {
-        if (offerId) get(`/offers/${offerId}`).then(res => {
-            if (res?.success) setLocalOffer(res.data?.data);
-        });
+        if (offerId) {
+            get(`/offers/${offerId}`).then(res => {
+                if (res?.success) setOffer(res.data?.data);
+            });
+        }
     }, [offerId]);
-
-    const offer = localOffer || data?.data;
 
     const handleAccept = useCallback(async () => {
         const res = await accept(`/offers/${offerId}/accept`, {});
-        if (res?.success) { setMsg('✓ Offer accepted. Transplant record created.'); }
+        if (res?.success) { setMsg('✓ Offer accepted. Transplant record created.'); setOffer(o => ({ ...o, status: 'accepted' })); }
         else setMsg(`✗ ${res?.message || 'Failed to accept'}`);
     }, [offerId, accept]);
 
     const handleDecline = useCallback(async () => {
-        const reason = prompt('Decline reason (required):');
+        const reason = window.prompt('Decline reason (required):');
         if (!reason) return;
         const res = await decline(`/offers/${offerId}/decline`, { decline_reason: reason });
-        if (res?.success) { setMsg('Offer declined. Cascading to next recipient.'); }
+        if (res?.success) { setMsg('Offer declined. Cascading to next recipient.'); setOffer(o => ({ ...o, status: 'declined' })); }
         else setMsg(`✗ ${res?.message || 'Failed to decline'}`);
     }, [offerId, decline]);
 
+    // No offerId — show landing state
     if (!offerId) {
         return (
             <div className="offer-page">
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 400, marginBottom: 8 }}>Offer Workflow</div>
-                <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 24 }}>
-                    Offers are created from the Matching Engine. Select an organ and send an offer to a recipient.
-                </div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, marginBottom: 8 }}>Offer Workflow</div>
+                <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 24 }}>Offers are created from the Matching Engine. Select an organ and send an offer to a recipient.</div>
                 <button className="btn-primary" onClick={() => navigate('/matching')}>Go to Matching Engine →</button>
             </div>
         );
     }
 
     if (loading && !offer) {
-        return <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><div className="spinner" /></div>;
+        return <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><div className="spinner" style={{ width: 28, height: 28 }} /></div>;
     }
 
     if (!offer) {
@@ -75,59 +76,64 @@ export default function OfferWorkflow() {
             <div style={{ marginBottom: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                     <button className="btn-ghost" onClick={() => navigate(-1)}>← Back</button>
-                    <OrganPill organId={offer.organ_type || offer.organ_id} />
-                    <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Offer #{offer.offer_id}</span>
+                    <OrganPill organId={offer.organ_type} />
+                    <span style={{ fontSize: 12, color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>Offer #{offer.offer_id}</span>
                 </div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 400, letterSpacing: -0.5, marginBottom: 6 }}>
-                    Offer Cascade
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
-                    NOTTO protocol: Timed offers with acceptance window. Auto-cascade on decline/timeout.
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, marginBottom: 4 }}>
+                    Offer Workflow
                 </div>
             </div>
 
             {msg && (
-                <div style={{
-                    padding: '10px 16px', borderRadius: 'var(--r-md)', marginBottom: 16, fontSize: 12, fontWeight: 600,
-                    background: msg.startsWith('✓') ? 'var(--teal-dim)' : 'var(--coral-dim)',
-                    color: msg.startsWith('✓') ? 'var(--teal)' : 'var(--coral)',
-                    border: `1px solid ${msg.startsWith('✓') ? 'rgba(15,212,164,0.2)' : 'rgba(240,90,53,0.2)'}`
-                }}>
+                <div style={{ padding: '9px 14px', borderRadius: 'var(--r-sm)', marginBottom: 18, fontSize: 12, fontWeight: 600, background: msg.startsWith('✓') ? 'var(--forest-dim)' : msg.startsWith('✗') ? 'var(--burgundy-dim)' : 'var(--amber-dim)', color: msg.startsWith('✓') ? 'var(--forest)' : msg.startsWith('✗') ? 'var(--burgundy)' : 'var(--amber)', border: `1px solid ${msg.startsWith('✓') ? 'var(--forest-border)' : 'var(--burgundy-border)'}` }}>
                     {msg}
                 </div>
             )}
 
-            <div style={{ display: 'flex', gap: 10, marginBottom: 22, flexWrap: 'wrap' }}>
+            {/* Info chips */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
                 {[
-                    { label: 'Organ ID', value: `#${offer.organ_id}` },
-                    { label: 'Status', value: offer.status, color: offer.status === 'accepted' ? 'var(--teal)' : offer.status === 'declined' ? 'var(--coral)' : 'var(--amber)' },
+                    { label: 'Donor Hospital', value: offer.donor_hospital || '—' },
+                    { label: 'Blood', value: offer.donor_blood || '—' },
+                    { label: 'Recipient', value: offer.recipient_name || '—' },
+                    { label: 'Recipient Hospital', value: offer.recipient_hospital || '—' },
+                    { label: 'Status', value: offer.status, color: DOT_COLORS[offer.status] || 'var(--text)' },
                     { label: 'Deadline', value: formatDate(offer.response_deadline) },
-                    { label: 'Sent at', value: formatDate(offer.created_at) },
-                ].filter(i => i.value).map(item => (
-                    <div key={item.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '8px 14px' }}>
-                        <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 3 }}>{item.label}</div>
+                ].map(item => (
+                    <div key={item.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '8px 12px' }}>
+                        <div style={{ fontSize: 9.5, color: 'var(--text-4)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 }}>{item.label}</div>
                         <div style={{ fontSize: 12, fontWeight: 600, color: item.color || 'var(--text)', textTransform: 'capitalize' }}>{item.value}</div>
                     </div>
                 ))}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 20 }}>
-                {/* Info panel */}
+                {/* Score breakdown */}
                 <div className="panel">
-                    <div className="panel-header"><div className="panel-title">Offer Details</div></div>
-                    <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div className="panel-header">
+                        <div className="panel-title">Match Score Breakdown</div>
+                        {offer.total_score != null && (
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, color: 'var(--forest)' }}>{Number(offer.total_score).toFixed(1)}</span>
+                        )}
+                    </div>
+                    <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {[
-                            { k: 'Offer ID', v: `#${offer.offer_id}` },
-                            { k: 'Organ', v: offer.organ_type || `#${offer.organ_id}` },
-                            { k: 'Recipient ID', v: `#${offer.recipient_id}` },
-                            { k: 'Sending Hospital', v: offer.offering_hospital_id ? `Hospital #${offer.offering_hospital_id}` : '—' },
-                            { k: 'Receiving Hosp.', v: offer.receiving_hospital_id ? `Hospital #${offer.receiving_hospital_id}` : '—' },
-                            { k: 'Cascade Round', v: offer.cascade_round },
-                            { k: 'Offered By', v: `User #${offer.offered_by}` },
-                        ].map(row => (
-                            <div key={row.k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                                <span style={{ color: 'var(--text-2)' }}>{row.k}</span>
-                                <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{row.v ?? '—'}</span>
+                            { label: 'ABO Blood', value: offer.score_abo, color: 'var(--burgundy)' },
+                            { label: 'HLA Match', value: offer.score_hla, color: 'var(--steel)' },
+                            { label: 'Urgency', value: offer.score_urgency, color: 'var(--amber)' },
+                            { label: 'Distance', value: offer.score_distance, color: 'var(--forest)' },
+                            { label: 'Wait Time', value: offer.score_wait_time, color: 'var(--sienna)' },
+                        ].map(s => (
+                            <div key={s.label}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                                    <span style={{ fontSize: 11, color: 'var(--text-2)' }}>{s.label}</span>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: s.color, fontFamily: 'var(--font-mono)' }}>
+                                        {s.value != null ? Number(s.value).toFixed(1) : '—'}
+                                    </span>
+                                </div>
+                                <div style={{ height: 4, background: 'var(--border-2)', borderRadius: 2, overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${Math.min(100, s.value || 0)}%`, background: s.color, borderRadius: 2, transition: 'width 0.6s ease' }} />
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -138,26 +144,41 @@ export default function OfferWorkflow() {
                     <div className="panel">
                         <div className="panel-header">
                             <div className="panel-title">Response Window</div>
-                            <span className="panel-badge" style={{
-                                background: isPending ? 'var(--amber-dim)' : offer.status === 'accepted' ? 'var(--teal-dim)' : 'var(--coral-dim)',
-                                color: isPending ? 'var(--amber)' : offer.status === 'accepted' ? 'var(--teal)' : 'var(--coral)',
-                            }}>{offer.status}</span>
+                            <span className={`panel-badge ${isPending ? 'pb-amber' : offer.status === 'accepted' ? 'pb-teal' : 'pb-red'}`}>
+                                {offer.status}
+                            </span>
                         </div>
-                        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                            <OfferTimer
-                                deadlineTs={deadline}
-                                canAct={isPending}
-                                onAccept={handleAccept}
-                                onDecline={handleDecline}
-                                loading={accepting || declining}
-                            />
+                        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                            <div style={{ width: '100%', padding: 12, background: 'var(--surface-2)', borderRadius: 'var(--r-sm)', marginBottom: 4 }}>
+                                <div style={{ fontSize: 9.5, color: 'var(--text-4)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5 }}>Current Recipient</div>
+                                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>{offer.recipient_name || '—'}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{offer.recipient_hospital}</div>
+                                {offer.total_score != null && <div style={{ fontSize: 10.5, color: 'var(--forest)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>Score: {Number(offer.total_score).toFixed(1)}</div>}
+                            </div>
+
+                            {isPending ? (
+                                <OfferTimer
+                                    deadlineTs={deadline}
+                                    canAct={true}
+                                    onAccept={handleAccept}
+                                    onDecline={handleDecline}
+                                    loading={accepting || declining}
+                                />
+                            ) : (
+                                <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: offer.status === 'accepted' ? 'var(--forest)' : 'var(--amber)', padding: '8px 0' }}>
+                                    {offer.status === 'accepted' && '✓ Offer Accepted — Transplant record created'}
+                                    {offer.status === 'declined' && '✗ Declined — Cascaded to next recipient'}
+                                    {offer.status === 'timeout' && '⏱ Offer timed out — Cascaded automatically'}
+                                    {offer.status === 'cancelled' && 'Offer cancelled'}
+                                </div>
+                            )}
                         </div>
                     </div>
 
                     {offer.decline_reason && (
-                        <div style={{ background: 'var(--coral-dim)', border: '1px solid rgba(240,90,53,0.2)', borderRadius: 'var(--r-md)', padding: '12px 16px' }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--coral)', marginBottom: 4 }}>Decline Reason</div>
-                            <div style={{ fontSize: 12, color: 'var(--text-2)' }}>{offer.decline_reason}</div>
+                        <div className="panel">
+                            <div className="panel-header"><div className="panel-title">Decline Reason</div></div>
+                            <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>{offer.decline_reason}</div>
                         </div>
                     )}
                 </div>

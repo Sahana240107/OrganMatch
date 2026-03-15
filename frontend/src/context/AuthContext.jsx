@@ -4,7 +4,6 @@ import { API_BASE } from '../utils/constants';
 
 const AuthContext = createContext(null);
 
-<<<<<<< Updated upstream
 // Demo fallback when backend is offline
 // Usernames and roles match the seed data exactly
 const DEMO_USERS = {
@@ -23,34 +22,32 @@ const DEMO_USERS = {
 };
 const DEMO_PASSWORD = 'Test@1234';
 
-=======
->>>>>>> Stashed changes
 export function AuthProvider({ children }) {
-    const [token,   setToken]   = useState(() => localStorage.getItem('om_token') || null);
-    const [user,    setUser]    = useState(() => {
+    const [token, setToken] = useState(() => localStorage.getItem('om_token') || null);
+    const [user, setUser] = useState(() => {
         try { return JSON.parse(localStorage.getItem('om_user')) || null; }
         catch { return null; }
     });
     const [loading, setLoading] = useState(false);
-    const [error,   setError]   = useState(null);
+    const [error, setError] = useState(null);
 
-<<<<<<< Updated upstream
     // Keep axios Authorization header in sync with token
-=======
->>>>>>> Stashed changes
     useEffect(() => {
-        if (token) axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        else delete axios.defaults.headers.common['Authorization'];
+        if (token) {
+            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        } else {
+            delete axios.defaults.headers.common['Authorization'];
+        }
     }, [token]);
 
     const persist = useCallback((t, u) => {
-        setToken(t); setUser(u);
+        setToken(t);
+        setUser(u);
         localStorage.setItem('om_token', t);
         localStorage.setItem('om_user', JSON.stringify(u));
     }, []);
 
     const login = useCallback(async (username, password) => {
-<<<<<<< Updated upstream
         setLoading(true);
         setError(null);
         try {
@@ -60,16 +57,10 @@ export function AuthProvider({ children }) {
                 { username, password },
                 { timeout: 4000 }
             );
-=======
-        setLoading(true); setError(null);
-        try {
-            const { data } = await axios.post(`${API_BASE}/api/auth/login`, { username, password }, { timeout: 5000 });
->>>>>>> Stashed changes
             persist(data.token, data.user);
             return { success: true };
 
         } catch (err) {
-<<<<<<< Updated upstream
             // Backend offline → try demo fallback
             if (!err.response) {
                 const mockUser = DEMO_USERS[username];
@@ -83,17 +74,17 @@ export function AuthProvider({ children }) {
             }
             // Backend returned an error — use 'error' key (not 'message')
             const msg = err.response?.data?.error || 'Login failed. Please try again.';
-=======
-            const msg = err.response?.data?.error || err.message || 'Login failed';
->>>>>>> Stashed changes
             setError(msg);
             return { success: false, message: msg };
-        } finally { setLoading(false); }
+        } finally {
+            setLoading(false);
+        }
     }, [persist]);
 
     const logout = useCallback(async () => {
-        try { await axios.post(`${API_BASE}/api/auth/logout`); } catch (_) { }
-        setToken(null); setUser(null);
+        try { await axios.post(`${API_BASE}/api/auth/logout`); } catch (_) { /* ignore */ }
+        setToken(null);
+        setUser(null);
         localStorage.removeItem('om_token');
         localStorage.removeItem('om_user');
     }, []);
@@ -105,7 +96,11 @@ export function AuthProvider({ children }) {
     }, [user]);
 
     return (
-        <AuthContext.Provider value={{ token, user, loading, error, login, logout, hasRole, isAuthenticated: !!token }}>
+        <AuthContext.Provider value={{
+            token, user, loading, error,
+            login, logout, hasRole,
+            isAuthenticated: !!token,
+        }}>
             {children}
         </AuthContext.Provider>
     );
@@ -113,6 +108,6 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
     const ctx = useContext(AuthContext);
-    if (!ctx) throw new Error('useAuth must be inside AuthProvider');
+    if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
     return ctx;
 }

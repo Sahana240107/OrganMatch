@@ -1,159 +1,185 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../hooks/useApi';
 
+/* ─── Mock hospital network data ─────────────────────────────────── */
+const MOCK_HOSPITALS = [
+    { id: 1, name: 'AIIMS Delhi', city: 'Delhi', lat: 28.5672, lng: 77.2100, type: 'zonal', organs: 3, capacity: 'high', blood: ['O+', 'A+', 'B+'], active: true },
+    { id: 2, name: 'PGIMER Chandigarh', city: 'Chandigarh', lat: 30.7652, lng: 76.7812, type: 'regional', organs: 2, capacity: 'medium', blood: ['O-', 'AB+'], active: true },
+    { id: 3, name: 'Fortis Gurgaon', city: 'Gurgaon', lat: 28.4595, lng: 77.0266, type: 'private', organs: 1, capacity: 'medium', blood: ['A+', 'B-'], active: true },
+    { id: 4, name: 'Apollo Chennai', city: 'Chennai', lat: 13.0827, lng: 80.2707, type: 'private', organs: 1, capacity: 'high', blood: ['O+', 'A+'], active: true },
+    { id: 5, name: 'Medanta Gurgaon', city: 'Gurgaon', lat: 28.4458, lng: 77.0347, type: 'private', organs: 0, capacity: 'high', blood: ['O+', 'B+', 'AB+'], active: false },
+    { id: 6, name: 'Max Delhi', city: 'Delhi', lat: 28.6878, lng: 77.1525, type: 'private', organs: 0, capacity: 'low', blood: ['A-', 'B+'], active: false },
+    { id: 7, name: 'KEM Mumbai', city: 'Mumbai', lat: 19.0020, lng: 72.8418, type: 'government', organs: 2, capacity: 'high', blood: ['O+', 'A+', 'B+'], active: true },
+    { id: 8, name: 'NIMHANS Bangalore', city: 'Bangalore', lat: 12.9381, lng: 77.5933, type: 'government', organs: 1, capacity: 'medium', blood: ['B+', 'AB-'], active: true },
+];
+
+const ACTIVE_ROUTE = {
+    from: { id: 2, name: 'PGIMER Chandigarh' },
+    to: { id: 1, name: 'AIIMS Delhi' },
+    organ: 'Kidney', distance: 267, eta: '3h 45m', transport: 'Air ambulance',
+};
+
+/* SVG coordinate mapping (simple equirectangular for India viewport) */
 const MAP_W = 900, MAP_H = 520;
 const LAT_MIN = 8, LAT_MAX = 37, LNG_MIN = 68, LNG_MAX = 98;
 
 function project(lat, lng) {
-    return {
-        x: ((lng - LNG_MIN) / (LNG_MAX - LNG_MIN)) * MAP_W,
-        y: ((LAT_MAX - lat) / (LAT_MAX - LAT_MIN)) * MAP_H,
-    };
+    const x = ((lng - LNG_MIN) / (LNG_MAX - LNG_MIN)) * MAP_W;
+    const y = ((LAT_MAX - lat) / (LAT_MAX - LAT_MIN)) * MAP_H;
+    return { x, y };
 }
 
-const LEVEL_COLORS = {
-    national: 'var(--coral)',
-    zonal: 'var(--amber)',
-    regional: 'var(--blue)',
-    state: 'var(--teal)',
-    district: 'var(--purple)',
+const TYPE_COLORS = {
+    zonal: '#e05c3a',
+    regional: '#4f9cf9',
+    private: '#30d9a0',
+    government: '#b478ff',
 };
 
 export default function LocationMap() {
-    const { get, data, loading, error } = useApi();
+    const { get, data } = useApi();
     const [selected, setSelected] = useState(null);
     const [filter, setFilter] = useState('all');
+    const hospitals = data?.hospitals || MOCK_HOSPITALS;
 
-    useEffect(() => { get('/hospitals'); }, []);
+    useEffect(() => { get('/hospital/network'); }, [get]);
 
-    const hospitals = (data?.data || []).filter(h => h.latitude && h.longitude);
-    const allHospitals = data?.data || [];
-    const types = ['all', ...new Set(hospitals.map(h => h.level).filter(Boolean))];
-    const filtered = filter === 'all' ? hospitals : hospitals.filter(h => h.level === filter);
-    const selHosp = selected != null ? hospitals.find(h => h.hospital_id === selected) : null;
+    const filtered = filter === 'all' ? hospitals : hospitals.filter(h => h.type === filter);
+
+    const selHosp = selected != null ? hospitals.find(h => h.id === selected) : null;
+
+    /* Route line coords */
+    const routeFrom = project(MOCK_HOSPITALS[1].lat, MOCK_HOSPITALS[1].lng);
+    const routeTo = project(MOCK_HOSPITALS[0].lat, MOCK_HOSPITALS[0].lng);
 
     return (
-        <div style={{ display: 'flex', height: 'calc(100vh - 58px)', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', height: 'calc(100vh - 56px)', flexDirection: 'column' }}>
             {/* Top bar */}
             <div style={{
-                padding: '12px 22px', borderBottom: '1px solid var(--border)',
+                padding: '14px 24px', borderBottom: '1px solid var(--border)',
                 display: 'flex', alignItems: 'center', gap: 14,
-                background: 'rgba(6,11,20,0.95)', backdropFilter: 'blur(16px)',
-                flexWrap: 'wrap',
+                background: 'rgba(8,14,26,0.8)', backdropFilter: 'blur(12px)',
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                        width: 8, height: 8, borderRadius: '50%',
-                        background: 'var(--teal)', boxShadow: '0 0 8px var(--teal)',
-                        animation: 'pulse-dot 2s ease-in-out infinite',
-                        flexShrink: 0,
-                    }} />
-                    <div style={{ fontFamily: 'var(--font-body)', fontSize: 15, fontWeight: 700 }}>Hospital Network Map</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700 }}>
+                    Hospital Network Map
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
-                    {loading ? 'Loading hospitals…' :
-                        error ? <span style={{ color: 'var(--coral)' }}>Failed to load — check backend connection</span> :
-                            `${hospitals.filter(h => h.is_active).length} active · ${hospitals.length} with coordinates · ${allHospitals.length} total`
-                    }
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    {hospitals.filter(h => h.active).length} active · {hospitals.length} total
                 </div>
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {types.map(t => (
-                        <button key={t} onClick={() => setFilter(t)} style={{
-                            padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 500,
-                            cursor: 'pointer', border: '1px solid',
-                            background: filter === t ? 'var(--coral)' : 'rgba(255,255,255,0.04)',
-                            borderColor: filter === t ? 'transparent' : 'var(--border)',
-                            color: filter === t ? '#fff' : 'var(--text-2)',
-                            fontFamily: 'var(--font-body)', transition: 'all 0.15s', textTransform: 'capitalize',
-                        }}>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                    {['all', 'zonal', 'regional', 'private', 'government'].map(t => (
+                        <button
+                            key={t}
+                            onClick={() => setFilter(t)}
+                            style={{
+                                padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 500,
+                                cursor: 'pointer', border: '1px solid',
+                                background: filter === t ? 'var(--accent)' : 'transparent',
+                                borderColor: filter === t ? 'transparent' : 'var(--border)',
+                                color: filter === t ? 'white' : 'var(--muted)',
+                                fontFamily: 'var(--font-body)', transition: 'all 0.15s',
+                                textTransform: 'capitalize',
+                            }}
+                        >
                             {t}
                         </button>
                     ))}
                 </div>
             </div>
 
-            {/* Map body */}
-            <div style={{ flex: 1, position: 'relative', background: '#060d1a', overflow: 'hidden' }}>
-
-                {/* Empty state — no data or no coordinates */}
-                {!loading && allHospitals.length === 0 && (
-                    <div style={{
-                        position: 'absolute', inset: 0,
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                        gap: 14, color: 'var(--text-2)',
-                    }}>
-                        <div style={{ fontSize: 48, opacity: 0.3 }}>📍</div>
-                        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>No hospitals in database</div>
-                        <div style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center', maxWidth: 320 }}>
-                            Add hospitals with latitude/longitude coordinates via the backend to see them on this map.
-                        </div>
-                    </div>
-                )}
-
-                {!loading && allHospitals.length > 0 && hospitals.length === 0 && (
-                    <div style={{
-                        position: 'absolute', inset: 0,
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                        gap: 14, color: 'var(--text-2)',
-                    }}>
-                        <div style={{ fontSize: 48, opacity: 0.3 }}>🗺️</div>
-                        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)' }}>{allHospitals.length} hospitals loaded</div>
-                        <div style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center', maxWidth: 320 }}>
-                            None have latitude/longitude coordinates yet. Update hospital records with coordinates to plot them here.
-                        </div>
-                    </div>
-                )}
-
-                <svg width="100%" height="100%" viewBox={`0 0 ${MAP_W} ${MAP_H}`}
-                    preserveAspectRatio="xMidYMid meet" style={{ position: 'absolute', inset: 0 }}>
+            {/* Map area */}
+            <div style={{ flex: 1, position: 'relative', background: '#0a1420', overflow: 'hidden' }}>
+                <svg
+                    width="100%" height="100%"
+                    viewBox={`0 0 ${MAP_W} ${MAP_H}`}
+                    preserveAspectRatio="xMidYMid meet"
+                    style={{ position: 'absolute', inset: 0 }}
+                >
+                    {/* Grid */}
                     <defs>
                         <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
-                            <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(255,255,255,0.015)" strokeWidth="1" />
+                            <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(255,255,255,0.02)" strokeWidth="1" />
                         </pattern>
-                        <radialGradient id="mapGlow" cx="50%" cy="50%" r="50%">
-                            <stop offset="0%" stopColor="rgba(15,212,164,0.05)" />
-                            <stop offset="100%" stopColor="transparent" />
-                        </radialGradient>
-                        <filter id="glow2">
-                            <feGaussianBlur stdDeviation="3" result="b" />
-                            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-                        </filter>
-                        <filter id="softGlow">
-                            <feGaussianBlur stdDeviation="6" result="b" />
-                            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+                        <filter id="glow">
+                            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                            <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
                         </filter>
                     </defs>
                     <rect width={MAP_W} height={MAP_H} fill="url(#grid)" />
-                    <rect width={MAP_W} height={MAP_H} fill="url(#mapGlow)" />
 
-                    {/* India outline simplified */}
+                    {/* India outline (simplified polygon) */}
                     <polygon
                         points="230,40 380,10 520,20 620,80 700,160 720,260 680,360 600,430 480,490 350,500 200,460 100,380 60,260 80,150 150,80"
-                        fill="rgba(15,212,164,0.02)" stroke="rgba(15,212,164,0.07)" strokeWidth="1.5" />
+                        fill="rgba(255,255,255,0.012)"
+                        stroke="rgba(255,255,255,0.05)"
+                        strokeWidth="1.5"
+                    />
 
+                    {/* Active transport route */}
+                    <line
+                        x1={routeFrom.x} y1={routeFrom.y}
+                        x2={routeTo.x} y2={routeTo.y}
+                        stroke="#30d9a0" strokeWidth="1.5"
+                        strokeDasharray="6 4" opacity="0.7"
+                    />
+                    {/* Route label midpoint */}
+                    <text
+                        x={(routeFrom.x + routeTo.x) / 2}
+                        y={(routeFrom.y + routeTo.y) / 2 - 8}
+                        textAnchor="middle"
+                        fill="rgba(48,217,160,0.8)" fontSize="10"
+                        fontFamily="var(--font-body)" fontWeight="600"
+                    >
+                        ✈ Kidney · {ACTIVE_ROUTE.distance} km · ETA {ACTIVE_ROUTE.eta}
+                    </text>
+
+                    {/* Hospital nodes */}
                     {filtered.map(h => {
-                        const { x, y } = project(Number(h.latitude), Number(h.longitude));
-                        const color = LEVEL_COLORS[h.level] || 'var(--blue)';
-                        const isSel = selected === h.hospital_id;
+                        const { x, y } = project(h.lat, h.lng);
+                        const color = TYPE_COLORS[h.type] || '#fff';
+                        const isSel = selected === h.id;
                         return (
-                            <g key={h.hospital_id}
-                                onClick={() => setSelected(selected === h.hospital_id ? null : h.hospital_id)}
+                            <g
+                                key={h.id}
+                                onClick={() => setSelected(selected === h.id ? null : h.id)}
                                 style={{ cursor: 'pointer' }}
-                                filter={isSel ? 'url(#softGlow)' : undefined}>
-                                {h.is_active && (
-                                    <circle cx={x} cy={y} r="10" fill="none" stroke={color} strokeWidth="1" opacity="0.5">
-                                        <animate attributeName="r" from="10" to="26" dur="2s" repeatCount="indefinite" />
-                                        <animate attributeName="opacity" from="0.5" to="0" dur="2s" repeatCount="indefinite" />
-                                    </circle>
+                                filter={isSel ? 'url(#glow)' : undefined}
+                            >
+                                {/* Pulse rings for active hospitals */}
+                                {h.active && h.organs > 0 && (
+                                    <>
+                                        <circle cx={x} cy={y} r="12" fill="none" stroke={color} strokeWidth="1" opacity="0.5">
+                                            <animate attributeName="r" from="12" to="28" dur="2s" repeatCount="indefinite" />
+                                            <animate attributeName="opacity" from="0.5" to="0" dur="2s" repeatCount="indefinite" />
+                                        </circle>
+                                        <circle cx={x} cy={y} r="12" fill="none" stroke={color} strokeWidth="1" opacity="0.3">
+                                            <animate attributeName="r" from="12" to="28" dur="2s" begin="0.7s" repeatCount="indefinite" />
+                                            <animate attributeName="opacity" from="0.3" to="0" dur="2s" begin="0.7s" repeatCount="indefinite" />
+                                        </circle>
+                                    </>
                                 )}
-                                <circle cx={x} cy={y} r={isSel ? 13 : 8}
-                                    fill={`${color}18`} stroke={color} strokeWidth={isSel ? 2 : 1.5}
-                                    style={{ transition: 'r 0.2s' }} />
-                                <circle cx={x} cy={y} r={h.is_active ? 4 : 2.5}
-                                    fill={h.is_active ? color : 'rgba(255,255,255,0.2)'} />
+                                {/* Outer ring */}
+                                <circle cx={x} cy={y} r={isSel ? 14 : 10}
+                                    fill={`${color}20`} stroke={color} strokeWidth={isSel ? 2 : 1.5}
+                                    style={{ transition: 'r 0.2s' }}
+                                />
+                                {/* Inner dot */}
+                                <circle cx={x} cy={y} r={h.active ? 5 : 3}
+                                    fill={h.active ? color : 'rgba(255,255,255,0.2)'}
+                                />
+                                {/* Organ count badge */}
+                                {h.organs > 0 && (
+                                    <text x={x + 10} y={y - 10} fill={color} fontSize="9" fontWeight="700" fontFamily="var(--font-body)">
+                                        {h.organs}
+                                    </text>
+                                )}
+                                {/* Label */}
                                 <text x={x} y={y + 20} textAnchor="middle"
-                                    fill={h.is_active ? 'rgba(232,240,255,0.6)' : 'rgba(232,240,255,0.2)'}
-                                    fontSize="8" fontFamily="Outfit,sans-serif">{h.name}</text>
+                                    fill={h.active ? 'rgba(240,244,255,0.7)' : 'rgba(240,244,255,0.3)'}
+                                    fontSize="9" fontFamily="var(--font-body)"
+                                >
+                                    {h.name}
+                                </text>
                             </g>
                         );
                     })}
@@ -162,93 +188,88 @@ export default function LocationMap() {
                 {/* Legend */}
                 <div style={{
                     position: 'absolute', bottom: 20, left: 20,
-                    background: 'rgba(6,11,20,0.92)', backdropFilter: 'blur(16px)',
-                    border: '1px solid var(--border)', borderRadius: 'var(--r-md)',
-                    padding: '12px 16px', minWidth: 150,
+                    background: 'rgba(8,14,26,0.88)', backdropFilter: 'blur(16px)',
+                    border: '1px solid var(--border)', borderRadius: 12,
+                    padding: '14px 16px', minWidth: 160,
                 }}>
-                    <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Hospital Level</div>
-                    {Object.entries(LEVEL_COLORS).map(([k, c]) => (
-                        <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: 'var(--text-2)', marginBottom: 5 }}>
-                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0, boxShadow: `0 0 4px ${c}` }} />
-                            <span style={{ textTransform: 'capitalize' }}>{k}</span>
+                    <div style={{ fontSize: 10, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+                        Hospital Type
+                    </div>
+                    {Object.entries(TYPE_COLORS).map(([type, color]) => (
+                        <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
+                            <div style={{ width: 10, height: 10, borderRadius: '50%', background: color }} />
+                            <span style={{ textTransform: 'capitalize' }}>{type}</span>
                         </div>
                     ))}
-                </div>
-
-                {/* Stats */}
-                <div style={{ position: 'absolute', top: 20, left: 20, display: 'flex', gap: 10 }}>
-                    {[
-                        { label: 'Active', value: hospitals.filter(h => h.is_active).length, color: 'var(--teal)' },
-                        { label: 'Total', value: allHospitals.length, color: 'var(--blue)' },
-                        { label: 'On Map', value: filtered.length, color: 'var(--amber)' },
-                    ].map(s => (
-                        <div key={s.label} style={{
-                            background: 'rgba(6,11,20,0.88)', backdropFilter: 'blur(12px)',
-                            border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '8px 14px',
-                        }}>
-                            <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 3 }}>{s.label}</div>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: s.color }}>{s.value}</div>
+                    <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--muted)' }}>
+                            <div style={{ width: 20, height: 1, background: '#30d9a0', borderTop: '1px dashed #30d9a0' }} />
+                            Active transport
                         </div>
-                    ))}
+                    </div>
                 </div>
 
                 {/* Hospital detail panel */}
                 {selHosp && (
                     <div style={{
-                        position: 'absolute', top: 20, right: 20, width: 270,
-                        background: 'rgba(6,11,20,0.97)', backdropFilter: 'blur(20px)',
-                        border: '1px solid var(--border)', borderRadius: 'var(--r-lg)',
-                        overflow: 'hidden', animation: 'fade-up 0.2s ease',
-                        boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                        position: 'absolute', top: 20, right: 20,
+                        width: 260, background: 'rgba(8,14,26,0.95)',
+                        backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
+                        borderRadius: 14, overflow: 'hidden',
+                        animation: 'fade-up 0.2s ease',
                     }}>
-                        <div style={{
-                            padding: '12px 14px', borderBottom: '1px solid var(--border)',
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{selHosp.name}</div>
-                            <button onClick={() => setSelected(null)} style={{
-                                background: 'none', border: 'none',
-                                color: 'var(--text-3)', cursor: 'pointer', fontSize: 18, lineHeight: 1,
-                                padding: '0 4px',
-                            }}>×</button>
+                        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>{selHosp.name}</div>
+                            <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: 'var(--faint)', cursor: 'pointer', fontSize: 16 }}>×</button>
                         </div>
                         {[
-                            { k: 'City / State', v: `${selHosp.city || '—'}, ${selHosp.state || '—'}` },
-                            { k: 'Level', v: selHosp.level, cap: true },
+                            { k: 'City', v: selHosp.city },
+                            { k: 'Type', v: selHosp.type, cap: true },
                             {
-                                k: 'Status', v: selHosp.is_active ? 'Active' : 'Inactive',
-                                color: selHosp.is_active ? 'var(--teal)' : 'var(--coral)'
+                                k: 'Status', v: selHosp.active ? 'Active' : 'Inactive',
+                                color: selHosp.active ? '#30d9a0' : '#e05c3a'
                             },
-                            { k: 'ICU Beds', v: selHosp.icu_beds_available != null ? `${selHosp.icu_beds_available} / ${selHosp.icu_beds_total}` : '—' },
-                            { k: 'Phone', v: selHosp.phone || '—' },
+                            { k: 'Available organs', v: selHosp.organs },
+                            { k: 'ICU Capacity', v: selHosp.capacity, cap: true },
+                            { k: 'Blood bank', v: selHosp.blood.join(' · ') },
                         ].map(row => (
-                            <div key={row.k} style={{
-                                padding: '8px 14px', borderBottom: '1px solid var(--border)',
-                                display: 'flex', justifyContent: 'space-between', fontSize: 11,
-                            }}>
-                                <span style={{ color: 'var(--text-3)' }}>{row.k}</span>
-                                <span style={{
-                                    fontWeight: 600, color: row.color || 'var(--text)',
-                                    textTransform: row.cap ? 'capitalize' : 'none',
-                                    textAlign: 'right', maxWidth: 160,
-                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                }}>{row.v}</span>
+                            <div key={row.k} style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                                <span style={{ color: 'var(--muted)' }}>{row.k}</span>
+                                <span style={{ fontWeight: 600, color: row.color || 'var(--text)', textTransform: row.cap ? 'capitalize' : 'none' }}>{row.v}</span>
                             </div>
                         ))}
+                        <div style={{ padding: '10px 14px' }}>
+                            <button style={{
+                                width: '100%', padding: '8px', background: 'var(--accent)',
+                                border: 'none', borderRadius: 8, color: 'white', fontSize: 11,
+                                fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-body)',
+                            }}>
+                                View Hospital Profile →
+                            </button>
+                        </div>
                     </div>
                 )}
 
-                {/* Loading overlay */}
-                {loading && (
-                    <div style={{
-                        position: 'absolute', inset: 0,
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                        gap: 12, background: 'rgba(6,11,20,0.6)', backdropFilter: 'blur(4px)',
-                    }}>
-                        <div className="spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
-                        <div style={{ fontSize: 12, color: 'var(--text-2)' }}>Loading hospital network…</div>
-                    </div>
-                )}
+                {/* Stats overlay top-left */}
+                <div style={{
+                    position: 'absolute', top: 20, left: 20,
+                    display: 'flex', gap: 10,
+                }}>
+                    {[
+                        { label: 'Active Hospitals', value: hospitals.filter(h => h.active).length, color: '#30d9a0' },
+                        { label: 'Organs in Transit', value: 3, color: '#f0a940' },
+                        { label: 'Network Coverage', value: '312 hospitals', color: '#4f9cf9' },
+                    ].map(s => (
+                        <div key={s.label} style={{
+                            background: 'rgba(8,14,26,0.85)', backdropFilter: 'blur(12px)',
+                            border: '1px solid var(--border)', borderRadius: 10,
+                            padding: '10px 14px',
+                        }}>
+                            <div style={{ fontSize: 10, color: 'var(--faint)', marginBottom: 4 }}>{s.label}</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: s.color, fontFamily: 'var(--font-display)' }}>{s.value}</div>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );

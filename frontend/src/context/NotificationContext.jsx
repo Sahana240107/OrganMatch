@@ -10,6 +10,7 @@ export function NotificationProvider({ children }) {
     const [liveToast, setLiveToast] = useState(null);
     const wsRef = useRef(null);
     const retryRef = useRef(null);
+    const retryCount = useRef(0);
     const toastRef = useRef(null);
 
     const push = useCallback((notif) => {
@@ -27,37 +28,59 @@ export function NotificationProvider({ children }) {
 
     useEffect(() => {
         if (!isAuthenticated || !token) return;
+
         const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:5000';
 
         function connect() {
-            const ws = new WebSocket(`${WS_URL}?token=${token}`);
-            wsRef.current = ws;
+            // Exponential backoff — max 30s, stop after 5 failures silently
+            const delay = Math.min(30000, 2000 * Math.pow(2, retryCount.current));
 
-            ws.onopen = () => { clearTimeout(retryRef.current); };
+            try {
+                const ws = new WebSocket(`${WS_URL}/?token=${token}`);
+                wsRef.current = ws;
 
-            ws.onmessage = e => {
-                try {
-                    const msg = JSON.parse(e.data);
-                    // Backend broadcasts: donor_registered, organ_available, match_completed,
-                    // offer_sent, offer_accepted, offer_declined_next_notified, organ_status_changed
-                    const MAP = {
-                        match_completed: { type: 'match', title: `Match Complete — ${msg.match_count || 0} found`, body: `Organ #${msg.organ_id}` },
-                        offer_accepted: { type: 'offer_accepted', title: 'Offer Accepted', body: `Offer #${msg.offer_id} accepted` },
-                        offer_declined_next_notified: { type: 'offer_declined', title: 'Offer Declined', body: 'Cascading to next recipient' },
-                        organ_available: { type: 'match', title: `Organ Available — ${msg.organ_type}`, body: `Viability: ${msg.viability_hours}h` },
-                        donor_registered: { type: 'match', title: 'Donor Registered', body: msg.full_name },
-                    };
-                    const notif = MAP[msg.event];
-                    if (notif) push({ ...notif, data: msg });
-                } catch (_) { }
-            };
+                ws.onopen = () => {
+                    retryCount.current = 0;
+                    clearTimeout(retryRef.current);
+                };
 
-            ws.onclose = () => { retryRef.current = setTimeout(connect, 5000); };
-            ws.onerror = () => ws.close();
+                ws.onmessage = e => {
+                    try {
+                        const msg = JSON.parse(e.data);
+                        const MAP = {
+                            match_completed: { title: `Match Complete — ${msg.data?.match_count || 0} found`, body: `Organ #${msg.data?.organ_id}` },
+                            offer_accepted: { title: 'Offer Accepted', body: `Offer #${msg.data?.offer_id} accepted` },
+                            offer_declined_next_notified: { title: 'Offer Declined', body: 'Cascading to next recipient' },
+                            organ_available: { title: `Organ Available — ${msg.data?.organ_type}`, body: `Viability: ${msg.data?.viability_hours}h` },
+                            donor_registered: { title: 'Donor Registered', body: msg.data?.full_name || '' },
+                        };
+                        const notif = MAP[msg.event];
+                        if (notif) push({ ...notif, data: msg.data });
+                    } catch (_) { }
+                };
+
+                ws.onclose = (e) => {
+                    // Only retry if it's not a clean close and backend might be up
+                    if (e.code !== 1000 && retryCount.current < 5) {
+                        retryCount.current += 1;
+                        retryRef.current = setTimeout(connect, delay);
+                    }
+                };
+
+                // Suppress error noise in console — onclose fires right after
+                ws.onerror = () => { };
+
+            } catch (_) {
+                // WebSocket constructor can throw if URL is invalid
+            }
         }
 
         connect();
-        return () => { clearTimeout(retryRef.current); wsRef.current?.close(1000, 'unmount'); };
+        return () => {
+            clearTimeout(retryRef.current);
+            retryCount.current = 99; // prevent reconnect on unmount
+            wsRef.current?.close(1000, 'unmount');
+        };
     }, [isAuthenticated, token, push]);
 
     return (
