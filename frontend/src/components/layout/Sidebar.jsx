@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { ROLES } from '../../utils/constants';
 
@@ -8,15 +8,14 @@ const NAV = [
         section: 'Overview',
         items: [
             { icon: '◉', label: 'Live Dashboard', to: '/dashboard' },
-            { icon: '📋', label: 'Active Matches', to: '/matches' },
+            { icon: '📋', label: 'Waiting List', to: '/waiting-list' },
         ],
     },
     {
         section: 'Registry',
         items: [
-            { icon: '❤️', label: 'Donors', to: '/donors' },
-            { icon: '🏥', label: 'Waiting List', to: '/waiting-list' },
-            { icon: '🩸', label: 'Blood Bank', to: '/blood-bank' },
+            { icon: '❤️', label: 'Register Donor', to: '/donors/register' },
+            { icon: '🏥', label: 'Register Recipient', to: '/recipients/register' },
         ],
     },
     {
@@ -24,15 +23,13 @@ const NAV = [
         items: [
             { icon: '🔬', label: 'Matching Engine', to: '/matching' },
             { icon: '📍', label: 'Location Map', to: '/map' },
-            { icon: '🚁', label: 'Transport', to: '/transport' },
-            { icon: '📬', label: 'Offers', to: '/offers' },
+            { icon: '📬', label: 'Offer Workflow', to: '/offers' },
         ],
     },
     {
         section: 'Reports',
         items: [
-            { icon: '📊', label: 'Analytics', to: '/analytics' },
-            { icon: '📁', label: 'Audit Log', to: '/audit', roles: [ROLES.NATIONAL_ADMIN] },
+            { icon: '📊', label: 'Analytics', to: '/analytics', roles: [ROLES.NATIONAL_ADMIN, ROLES.REGIONAL_COORDINATOR] },
             { icon: '🏆', label: 'Transplant History', to: '/history' },
         ],
     },
@@ -40,7 +37,6 @@ const NAV = [
 
 export default function Sidebar() {
     const { user, logout, hasRole } = useAuth();
-    const navigate = useNavigate();
 
     return (
         <aside className="sidebar">
@@ -63,31 +59,45 @@ export default function Sidebar() {
                 </div>
             ))}
 
-            {/* User info at bottom */}
-            <div style={{ marginTop: 'auto', padding: '16px 12px', borderTop: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            {/* User strip */}
+            <div style={{
+                marginTop: 'auto',
+                borderTop: '1px solid rgba(255,255,255,0.07)',
+                padding: '12px 10px',
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 9 }}>
                     <div style={{
-                        width: 32, height: 32, borderRadius: '50%',
-                        background: 'rgba(79,156,249,0.15)', border: '1px solid rgba(79,156,249,0.3)',
+                        width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                        background: 'linear-gradient(135deg, rgba(124,29,46,0.5), rgba(124,29,46,0.2))',
+                        border: '1px solid rgba(158,40,64,0.4)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 12, fontWeight: 700, color: '#4f9cf9', flexShrink: 0,
+                        fontSize: 11, fontWeight: 700, color: '#e8c4b8',
+                        fontFamily: 'var(--font-mono)',
                     }}>
-                        {user?.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'JK'}
+                        {user?.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'OM'}
                     </div>
-                    <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{user?.name || 'User'}</div>
-                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>{user?.hospital || 'System'}</div>
+                    <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(245,240,232,0.78)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {user?.name || 'User'}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'rgba(245,240,232,0.28)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>
+                            {user?.hospital || 'System'}
+                        </div>
                     </div>
                 </div>
                 <button
                     onClick={logout}
                     style={{
-                        width: '100%', padding: '7px 12px',
-                        background: 'rgba(224,92,58,0.08)', border: '1px solid rgba(224,92,58,0.2)',
-                        borderRadius: 8, color: '#e05c3a', fontSize: 11, fontWeight: 500,
+                        width: '100%', padding: '6px 10px',
+                        background: 'rgba(124,29,46,0.15)',
+                        border: '1px solid rgba(124,29,46,0.28)',
+                        borderRadius: 5, color: '#c8707a',
+                        fontSize: 11, fontWeight: 600,
                         cursor: 'pointer', fontFamily: 'var(--font-body)',
-                        transition: 'all 0.2s',
+                        transition: 'all 0.15s', letterSpacing: 0.2,
                     }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,29,46,0.25)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(124,29,46,0.15)'; }}
                 >
                     Sign Out
                 </button>
