@@ -1,138 +1,199 @@
-import React, { useEffect } from 'react';
-import { useApi } from '../hooks/useApi';
+import { useEffect, useRef, useState } from 'react'
+import { Chart, registerables } from 'chart.js'
+import { useApi } from '../hooks/useApi'
+import KPICard from '../components/ui/KPICard'
+
+Chart.register(...registerables)
+
+function Spinner() {
+  return <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+}
 
 export default function Analytics() {
-    const { get, data, loading } = useApi();
+  const { request } = useApi()
 
-    useEffect(() => { get('/analytics/summary'); }, []);
+  const lineRef    = useRef(null)
+  const barRef     = useRef(null)
+  const donutRef   = useRef(null)
+  const lineChart  = useRef(null)
+  const barChart   = useRef(null)
+  const donutChart = useRef(null)
 
-    // Real DB fields from analytics controller:
-    // organs_available, organs_allocated, organs_transplanted, organs_expired,
-    // recipients_waiting, critical_patients, transplants_today,
-    // avg_cold_ischemia_hrs, graft_success_pct, total_donors, total_transplants,
-    // offer_stats { pending_offers, accepted_offers, declined_offers, expired_offers },
-    // transplants_by_organ [ { organ_type, count } ],
-    // avg_wait_days_by_organ [ { organ_needed, avg_wait_days } ]
-    const d = data?.data || {};
-    const byOrgan = d.transplants_by_organ || [];
-    const avgWait = d.avg_wait_days_by_organ || [];
-    const maxOrganCount = Math.max(...byOrgan.map(o => o.count), 1);
+  const [kpis,         setKpis]         = useState(null)
+  const [monthlyTrend, setMonthlyTrend] = useState([])
+  const [organBreak,   setOrganBreak]   = useState([])
+  const [urgencyDist,  setUrgencyDist]  = useState([])
+  const [topHospitals, setTopHospitals] = useState([])
+  const [bloodDist,    setBloodDist]    = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [error,        setError]        = useState('')
 
-    const ORGAN_COLORS = {
-        kidney: 'var(--steel)', liver: 'var(--forest)', heart: 'var(--burgundy)',
-        lung: 'var(--sienna)', cornea: 'var(--amber)', pancreas: 'var(--amber)',
-        bone: 'var(--text-3)', small_intestine: 'var(--text-3)',
-    };
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      setError('')
+      try {
+        const data = await request('GET', '/api/analytics/full')
+        setKpis(data?.kpis             || null)
+        setMonthlyTrend(data?.monthly_trend   || [])
+        setOrganBreak(data?.organ_breakdown   || [])
+        setUrgencyDist(data?.urgency_distribution || [])
+        setTopHospitals(data?.top_hospitals   || [])
+        setBloodDist(data?.blood_distribution  || [])
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
 
-    return (
-        <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, letterSpacing: -0.3, marginBottom: 4 }}>Analytics</div>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 20 }}>Platform-wide statistics · Live from database</div>
+  // Monthly trend line chart
+  useEffect(() => {
+    if (!monthlyTrend.length || !lineRef.current) return
+    lineChart.current?.destroy()
+    lineChart.current = new Chart(lineRef.current, {
+      type: 'line',
+      data: {
+        labels: monthlyTrend.map(t => t.month),
+        datasets: [
+          { label: 'This Year', data: monthlyTrend.map(t => t.current_year), borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#22c55e', pointRadius: 3 },
+          { label: 'Last Year', data: monthlyTrend.map(t => t.prev_year),    borderColor: '#3b82f6', backgroundColor: 'transparent', tension: 0.4, borderDash: [4, 2], pointRadius: 2 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#8892a8', font: { size: 11 }, boxWidth: 10 } } },
+        scales: {
+          x: { ticks: { color: '#8892a8', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          y: { ticks: { color: '#8892a8', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        },
+      },
+    })
+    return () => { lineChart.current?.destroy(); lineChart.current = null }
+  }, [monthlyTrend])
 
-            {loading && <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><div className="spinner" /></div>}
+  // Organ breakdown bar chart
+  useEffect(() => {
+    if (!organBreak.length || !barRef.current) return
+    barChart.current?.destroy()
+    barChart.current = new Chart(barRef.current, {
+      type: 'bar',
+      data: {
+        labels: organBreak.map(o => o.organ_type),
+        datasets: [{ label: 'Transplants', data: organBreak.map(o => o.count), backgroundColor: ['#3b82f6','#f59e0b','#ef4444','#2dd4bf','#a78bfa','#fb7185','#94a3b8','#34d399'], borderRadius: 4, borderSkipped: false }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#8892a8', font: { size: 10 } }, grid: { display: false } },
+          y: { ticks: { color: '#8892a8', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        },
+      },
+    })
+    return () => { barChart.current?.destroy(); barChart.current = null }
+  }, [organBreak])
 
-            {/* KPIs */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: 'var(--border)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', overflow: 'hidden', marginBottom: 20 }}>
-                {[
-                    { label: 'Total Donors', value: d.total_donors ?? '—', color: 'var(--burgundy)' },
-                    { label: 'Waiting Patients', value: d.recipients_waiting ?? '—', color: 'var(--steel)' },
-                    { label: 'Available Organs', value: d.organs_available ?? '—', color: 'var(--forest)' },
-                    { label: 'Total Transplants', value: d.total_transplants ?? '—', color: 'var(--sienna)' },
-                ].map(k => (
-                    <div key={k.label} className="kpi-card">
-                        <div className="kpi-label">{k.label}</div>
-                        <div className="kpi-val" style={{ color: k.color, fontSize: 26 }}>{k.value}</div>
-                    </div>
-                ))}
-            </div>
+  // Urgency donut chart
+  useEffect(() => {
+    if (!urgencyDist.length || !donutRef.current) return
+    donutChart.current?.destroy()
+    donutChart.current = new Chart(donutRef.current, {
+      type: 'doughnut',
+      data: {
+        labels: urgencyDist.map(u => u.label),
+        datasets: [{ data: urgencyDist.map(u => u.count), backgroundColor: ['#ef4444','#f59e0b','#3b82f6','#4a5568'], borderColor: 'transparent' }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '60%',
+        plugins: { legend: { position: 'bottom', labels: { color: '#8892a8', font: { size: 10 }, boxWidth: 10, padding: 8 } } },
+      },
+    })
+    return () => { donutChart.current?.destroy(); donutChart.current = null }
+  }, [urgencyDist])
 
-            {/* Organ stats row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: 'var(--border)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', overflow: 'hidden', marginBottom: 20 }}>
-                {[
-                    { label: 'Organs Allocated', value: d.organs_allocated ?? '—', color: 'var(--amber)' },
-                    { label: 'Organs Transplanted', value: d.organs_transplanted ?? '—', color: 'var(--forest)' },
-                    { label: 'Organs Expired', value: d.organs_expired ?? '—', color: 'var(--burgundy)' },
-                    { label: 'Critical Patients', value: d.critical_patients ?? '—', color: 'var(--burgundy)' },
-                ].map(k => (
-                    <div key={k.label} className="kpi-card">
-                        <div className="kpi-label">{k.label}</div>
-                        <div className="kpi-val" style={{ color: k.color, fontSize: 24 }}>{k.value}</div>
-                    </div>
-                ))}
-            </div>
+  const maxHospCount = topHospitals[0]?.count || 1
 
-            <div className="two-col" style={{ marginBottom: 18 }}>
-                {/* Transplants by organ */}
-                <div className="panel">
-                    <div className="panel-header">
-                        <div className="panel-title">Transplants by Organ Type</div>
-                        <span className="panel-badge pb-teal">All time</span>
-                    </div>
-                    <div style={{ padding: '16px 18px' }}>
-                        {byOrgan.length === 0 && !loading && (
-                            <div style={{ color: 'var(--text-3)', fontSize: 12, textAlign: 'center', padding: '20px 0' }}>No transplant data yet</div>
-                        )}
-                        {byOrgan.map(o => {
-                            const color = ORGAN_COLORS[o.organ_type] || 'var(--steel)';
-                            return (
-                                <div key={o.organ_type} style={{ marginBottom: 12 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                        <span style={{ fontSize: 12, fontWeight: 500, textTransform: 'capitalize' }}>{o.organ_type}</span>
-                                        <span style={{ fontSize: 11, fontWeight: 700, color, fontFamily: 'var(--font-mono)' }}>{o.count}</span>
-                                    </div>
-                                    <div style={{ height: 5, background: 'var(--border-2)', borderRadius: 2, overflow: 'hidden' }}>
-                                        <div style={{ height: '100%', width: `${(o.count / maxOrganCount) * 100}%`, background: color, borderRadius: 2, transition: 'width 0.8s ease' }} />
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
+  if (error) return <div style={{ padding: 32, textAlign: 'center', color: 'var(--red)', fontSize: 13 }}>Failed to load analytics: {error}</div>
 
-                {/* Offer stats */}
-                <div className="panel">
-                    <div className="panel-header">
-                        <div className="panel-title">Offer Statistics</div>
-                        <span className="panel-badge pb-blue">All time</span>
-                    </div>
-                    <div style={{ padding: '16px 18px' }}>
-                        {[
-                            { label: 'Pending', value: d.offer_stats?.pending_offers || 0, color: 'var(--amber)' },
-                            { label: 'Accepted', value: d.offer_stats?.accepted_offers || 0, color: 'var(--forest)' },
-                            { label: 'Declined', value: d.offer_stats?.declined_offers || 0, color: 'var(--burgundy)' },
-                            { label: 'Expired', value: d.offer_stats?.expired_offers || 0, color: 'var(--text-3)' },
-                        ].map(s => (
-                            <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-                                <span style={{ color: 'var(--text-2)' }}>{s.label} Offers</span>
-                                <span style={{ fontWeight: 700, fontSize: 18, color: s.color, fontFamily: 'var(--font-mono)', letterSpacing: -0.5 }}>{s.value}</span>
-                            </div>
-                        ))}
+  return (
+    <div>
+      <div className="grid-4 mb-20">
+        <KPICard label="Match Success Rate"   value={kpis?.match_success_rate   ? `${kpis.match_success_rate}%`  : '—'} color="green" />
+        <KPICard label="Avg Score"            value={kpis?.avg_match_score      ?? '—'}                                  color="blue" />
+        <KPICard label="Organs Expired"       value={kpis?.organs_expired       ?? '—'}                                  color="amber" />
+        <KPICard label="Avg Offer Resp. Time" value={kpis?.avg_response_time_hrs ? `${kpis.avg_response_time_hrs}h` : '—'} color="red" />
+      </div>
 
-                        {/* Graft success */}
-                        {d.graft_success_pct != null && (
-                            <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-                                <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Graft Success Rate</div>
-                                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--forest)', fontFamily: 'var(--font-mono)' }}>{d.graft_success_pct}%</div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Avg wait by organ */}
-                    {avgWait.length > 0 && (
-                        <>
-                            <div style={{ padding: '10px 18px 4px', fontSize: 11, fontWeight: 600, borderTop: '1px solid var(--border)', color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Avg Wait Days by Organ</div>
-                            <div style={{ padding: '0 18px 14px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                                {avgWait.map(w => (
-                                    <div key={w.organ_needed} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                                        <span style={{ color: 'var(--text-2)', textTransform: 'capitalize' }}>{w.organ_needed}</span>
-                                        <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{w.avg_wait_days ? `${Number(w.avg_wait_days).toFixed(0)} days` : '—'}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
+      <div className="grid-2 mb-16">
+        <div className="card">
+          <div className="card-header"><span className="card-title">Monthly Transplant Trend</span></div>
+          <div style={{ padding: '16px 18px', position: 'relative', height: 240 }}>
+            {loading ? <Spinner /> : <canvas ref={lineRef} />}
+          </div>
         </div>
-    );
+        <div className="card">
+          <div className="card-header"><span className="card-title">Transplants by Organ Type</span></div>
+          <div style={{ padding: '16px 18px', position: 'relative', height: 240 }}>
+            {loading ? <Spinner /> : <canvas ref={barRef} />}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid-3">
+        {/* Top hospitals */}
+        <div className="card">
+          <div className="card-header"><span className="card-title">Top Hospitals by Volume</span></div>
+          <div style={{ padding: '12px 0' }}>
+            {loading ? <Spinner /> : topHospitals.map((h, i) => {
+              const COLORS = ['var(--accent)','var(--blue)','var(--teal)','var(--amber)','var(--purple)']
+              return (
+                <div key={i} className="flex items-center justify-between" style={{ padding: '8px 16px' }}>
+                  <span style={{ fontSize: 12, flex: 1 }}>{h.name}</span>
+                  <div className="score-bar-wrap" style={{ width: 120 }}>
+                    <div className="score-bar">
+                      <div className="score-bar-fill" style={{ width: `${(h.count / maxHospCount) * 100}%`, background: COLORS[i % COLORS.length] }} />
+                    </div>
+                    <span className="score-val">{h.count}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Urgency donut */}
+        <div className="card">
+          <div className="card-header"><span className="card-title">Urgency Distribution</span></div>
+          <div style={{ padding: '16px 18px', position: 'relative', height: 200 }}>
+            {loading ? <Spinner /> : <canvas ref={donutRef} />}
+          </div>
+        </div>
+
+        {/* Blood group */}
+        <div className="card">
+          <div className="card-header"><span className="card-title">Blood Group Distribution</span></div>
+          <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {loading ? <Spinner /> : bloodDist.map((b, i) => {
+              const COLORS = ['var(--amber)','var(--blue)','var(--accent)','var(--purple)','var(--text2)']
+              const color  = COLORS[i % COLORS.length]
+              return (
+                <div key={b.blood_group}>
+                  <div className="flex items-center justify-between mb-4">
+                    <span style={{ fontSize: 12 }}>{b.blood_group}</span>
+                    <span style={{ fontSize: 12, fontFamily: 'var(--mono)', color }}>{b.percentage}%</span>
+                  </div>
+                  <div className="score-bar">
+                    <div className="score-bar-fill" style={{ width: `${b.percentage}%`, background: color }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
