@@ -1,124 +1,117 @@
-import React, { useState, useEffect } from 'react';
-import OrganPill from '../components/ui/OrganPill';
-import { useApi } from '../hooks/useApi';
-import { formatDate } from '../utils/formatters';
+import { useState, useEffect } from 'react'
+import { useApi } from '../hooks/useApi'
+import OrganPill from '../components/ui/OrganPill'
+import KPICard from '../components/ui/KPICard'
+import { formatDate } from '../utils/formatters'
 
-const MOCK_HISTORY = [
-    { id: 1, organId: 'kidney_l', donor: 'Arjun S.', recipient: 'Rajan M.', donorHosp: 'PGIMER', recipientHosp: 'AIIMS Delhi', date: '2026-03-10T09:30:00Z', outcome: 'successful', graftSurviving: true, score: 97.2 },
-    { id: 2, organId: 'heart', donor: 'Priya D.', recipient: 'Suresh K.', donorHosp: 'AIIMS Delhi', recipientHosp: 'Medanta Gurgaon', date: '2026-03-09T14:20:00Z', outcome: 'successful', graftSurviving: true, score: 92.1 },
-    { id: 3, organId: 'liver', donor: 'Mohan V.', recipient: 'Deepa R.', donorHosp: 'Apollo Chennai', recipientHosp: 'KEM Mumbai', date: '2026-03-08T11:10:00Z', outcome: 'successful', graftSurviving: true, score: 88.5 },
-    { id: 4, organId: 'cornea', donor: 'Kavitha N.', recipient: 'Arun P.', donorHosp: 'Sankara', recipientHosp: 'Sankara Chennai', date: '2026-03-07T16:45:00Z', outcome: 'successful', graftSurviving: true, score: 95.0 },
-    { id: 5, organId: 'lung_r', donor: 'Sunita T.', recipient: 'Meera J.', donorHosp: 'Fortis Mumbai', recipientHosp: 'Kokilaben Mumbai', date: '2026-03-06T08:00:00Z', outcome: 'complications', graftSurviving: true, score: 79.4 },
-    { id: 6, organId: 'kidney_r', donor: 'Vikram N.', recipient: 'Kavya S.', donorHosp: 'Max Delhi', recipientHosp: 'Fortis Delhi', date: '2026-03-05T13:30:00Z', outcome: 'successful', graftSurviving: true, score: 81.2 },
-    { id: 7, organId: 'liver', donor: 'Anita G.', recipient: 'Sanjay R.', donorHosp: 'Manipal', recipientHosp: 'Apollo Bangalore', date: '2026-03-04T10:15:00Z', outcome: 'successful', graftSurviving: true, score: 74.8 },
-    { id: 8, organId: 'heart', donor: 'Ramesh K.', recipient: 'Pooja V.', donorHosp: 'AIIMS Delhi', recipientHosp: 'PGI Chandigarh', date: '2026-03-03T07:45:00Z', outcome: 'failed', graftSurviving: false, score: 68.0 },
-];
+const OUTCOME_MAP = {
+  successful:    { cls: 'badge-green',  label: 'Successful' },
+  monitoring:    { cls: 'badge-amber',  label: 'Monitoring' },
+  graft_failure: { cls: 'badge-red',    label: 'Graft Failure' },
+  rejected:      { cls: 'badge-red',    label: 'Rejected' },
+}
 
-const OUTCOME_STYLES = {
-    successful: { color: '#30d9a0', label: 'Successful' },
-    complications: { color: '#f0a940', label: 'Complications' },
-    failed: { color: '#e05c3a', label: 'Failed' },
-};
+function Spinner() {
+  return <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+}
 
 export default function TransplantHistory() {
-    const { get, data } = useApi();
-    const [records, setRecords] = useState(MOCK_HISTORY);
-    const [filterOutcome, setFilterOutcome] = useState('all');
+  const { request } = useApi()
 
-    useEffect(() => {
-        get('/transplant/history').then(res => {
-            if (res?.success && res.data?.length) setRecords(res.data);
-        });
-    }, [get]);
+  const [records, setRecords]   = useState([])
+  const [summary, setSummary]   = useState(null)
+  const [loading, setLoading]   = useState(true)
+  const [error,   setError]     = useState('')
+  const [page,    setPage]      = useState(1)
+  const [hasMore, setHasMore]   = useState(false)
 
-    const filtered = filterOutcome === 'all' ? records : records.filter(r => r.outcome === filterOutcome);
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      setError('')
+      try {
+        const [recordData, summaryData] = await Promise.all([
+          request('GET', `/api/transplants?page=${page}&limit=20`),
+          request('GET', '/api/analytics/transplant-summary'),
+        ])
+        setRecords(prev => page === 1 ? (recordData?.transplants || []) : [...prev, ...(recordData?.transplants || [])])
+        setHasMore(recordData?.has_more || false)
+        setSummary(summaryData)
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [page])
 
-    const stats = {
-        total: records.length,
-        successful: records.filter(r => r.outcome === 'successful').length,
-        surviving: records.filter(r => r.graftSurviving).length,
-        avgScore: (records.reduce((s, r) => s + r.score, 0) / records.length).toFixed(1),
-    };
+  return (
+    <div>
+      <div className="grid-4 mb-20">
+        <KPICard label="Total Transplants" value={summary?.total      ?? '—'} color="green" />
+        <KPICard label="1-Year Survival"   value={summary?.survival_rate ? `${summary.survival_rate}%` : '—'} color="blue" />
+        <KPICard label="Avg Ischemic Time" value={summary?.avg_ischemic_hours ? `${summary.avg_ischemic_hours}h` : '—'} color="amber" />
+        <KPICard label="Graft Failures"    value={summary?.graft_failures ?? '—'} color="red" />
+      </div>
 
-    return (
-        <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, letterSpacing: -0.5, marginBottom: 6 }}>
-                Transplant History
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 24 }}>
-                Completed transplants and outcomes
-            </div>
-
-            {/* Stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
-                {[
-                    { label: 'Total Transplants', value: stats.total, color: '#4f9cf9' },
-                    { label: 'Successful', value: stats.successful, color: '#30d9a0' },
-                    { label: 'Grafts Surviving', value: `${stats.surviving}/${stats.total}`, color: '#30d9a0' },
-                    { label: 'Avg Match Score', value: stats.avgScore, color: '#b478ff' },
-                ].map(s => (
-                    <div key={s.label} className="kpi-card">
-                        <div className="kpi-label">{s.label}</div>
-                        <div className="kpi-val" style={{ color: s.color }}>{s.value}</div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Filter */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                {['all', 'successful', 'complications', 'failed'].map(o => (
-                    <button key={o} onClick={() => setFilterOutcome(o)}
-                        style={{ padding: '5px 14px', borderRadius: 20, fontSize: 11, fontWeight: 500, cursor: 'pointer', border: '1px solid', background: filterOutcome === o ? 'var(--accent)' : 'transparent', borderColor: filterOutcome === o ? 'transparent' : 'var(--border)', color: filterOutcome === o ? 'white' : 'var(--muted)', fontFamily: 'var(--font-body)', transition: 'all 0.15s', textTransform: 'capitalize' }}>
-                        {o === 'all' ? 'All Outcomes' : o}
-                    </button>
-                ))}
-            </div>
-
-            {/* Table */}
-            <div className="panel">
-                <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                            <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                                {['Organ', 'Donor → Recipient', 'Hospitals', 'Date', 'Score', 'Outcome', 'Graft'].map(h => (
-                                    <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 10, fontWeight: 600, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filtered.map(r => {
-                                const oc = OUTCOME_STYLES[r.outcome] || OUTCOME_STYLES.successful;
-                                return (
-                                    <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }}
-                                        onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-hover)'}
-                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                                    >
-                                        <td style={{ padding: '12px 16px' }}><OrganPill organId={r.organId} size="sm" /></td>
-                                        <td style={{ padding: '12px 16px' }}>
-                                            <div style={{ fontSize: 12, fontWeight: 600 }}>{r.donor}</div>
-                                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>→ {r.recipient}</div>
-                                        </td>
-                                        <td style={{ padding: '12px 16px' }}>
-                                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{r.donorHosp}</div>
-                                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>→ {r.recipientHosp}</div>
-                                        </td>
-                                        <td style={{ padding: '12px 16px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                                            {formatDate(r.date)}
-                                        </td>
-                                        <td style={{ padding: '12px 16px', fontSize: 12, fontWeight: 700, color: '#30d9a0' }}>{r.score}</td>
-                                        <td style={{ padding: '12px 16px' }}>
-                                            <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 20, background: `${oc.color}18`, color: oc.color, fontWeight: 700 }}>{oc.label}</span>
-                                        </td>
-                                        <td style={{ padding: '12px 16px', fontSize: 11, fontWeight: 600, color: r.graftSurviving ? '#30d9a0' : '#e05c3a' }}>
-                                            {r.graftSurviving ? '✓ Surviving' : '✗ Failed'}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Transplant Records</span>
+          <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }}>Export CSV</button>
         </div>
-    );
+
+        {error && <div style={{ color: 'var(--red)', fontSize: 12, padding: '12px 18px' }}>{error}</div>}
+
+        {loading && page === 1 ? <Spinner /> : (
+          <>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Transplant ID</th><th>Organ</th><th>Donor</th><th>Recipient</th>
+                    <th>Hospital</th><th>Date</th><th>Ischemic Time</th><th>Match Score</th><th>Outcome</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map(t => {
+                    const o = OUTCOME_MAP[t.outcome] || { cls: 'badge-gray', label: t.outcome || '—' }
+                    const scoreColor = t.match_score >= 80 ? 'var(--accent)' : t.match_score >= 65 ? 'var(--blue)' : 'var(--amber)'
+                    const ischemicHrs = t.ischemic_time_minutes ? `${Math.floor(t.ischemic_time_minutes / 60)}h ${t.ischemic_time_minutes % 60}m` : 'N/A'
+                    return (
+                      <tr key={t.transplant_id}>
+                        <td style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>TX-{t.transplant_id}</td>
+                        <td>{t.organ?.organ_type ? <OrganPill type={t.organ.organ_type} /> : '—'}</td>
+                        <td style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>D-{t.donor_id}</td>
+                        <td style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>R-{t.recipient_id}</td>
+                        <td>{t.hospital?.name || '—'}</td>
+                        <td>{formatDate(t.transplant_date)}</td>
+                        <td style={{ fontFamily: 'var(--mono)' }}>{ischemicHrs}</td>
+                        <td>
+                          {t.match_score != null
+                            ? <span style={{ fontFamily: 'var(--mono)', fontWeight: 600, color: scoreColor }}>{t.match_score}</span>
+                            : '—'}
+                        </td>
+                        <td><span className={`badge ${o.cls}`}>{o.label}</span></td>
+                      </tr>
+                    )
+                  })}
+                  {!records.length && (
+                    <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text3)', padding: 32 }}>No transplant records found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {hasMore && (
+              <div style={{ padding: 16, textAlign: 'center' }}>
+                <button className="btn btn-ghost" onClick={() => setPage(p => p + 1)} disabled={loading}>
+                  {loading ? 'Loading…' : 'Load More'}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
 }

@@ -1,85 +1,50 @@
-import React, { useEffect, useRef } from 'react';
-import { useNotifications } from '../../context/NotificationContext';
+import { useEffect, useState } from 'react'
 
-const TYPE_COLORS = {
-    match: { color: '#30d9a0', bg: 'rgba(48,217,160,0.12)', border: 'rgba(48,217,160,0.3)' },
-    offer_accepted: { color: '#4f9cf9', bg: 'rgba(79,156,249,0.12)', border: 'rgba(79,156,249,0.3)' },
-    offer_declined: { color: '#f0a940', bg: 'rgba(240,169,64,0.12)', border: 'rgba(240,169,64,0.3)' },
-    urgent: { color: '#e05c3a', bg: 'rgba(224,92,58,0.12)', border: 'rgba(224,92,58,0.3)' },
-};
-
-export default function NotificationToast() {
-    const { liveToast, dismissToast } = useNotifications();
-    const barRef = useRef(null);
-    const animRef = useRef(null);
+/**
+ * NotificationToast — ephemeral toast that auto-dismisses after `duration` ms.
+ * Used by NotificationContext to surface live WebSocket events.
+ */
+export default function NotificationToast({ message, type = 'info', duration = 4000, onDismiss }) {
+    const [visible, setVisible] = useState(true)
 
     useEffect(() => {
-        if (!liveToast) return;
-        // Animate the progress bar
-        if (barRef.current) {
-            barRef.current.style.transition = 'none';
-            barRef.current.style.width = '100%';
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    if (barRef.current) {
-                        barRef.current.style.transition = 'width 7s linear';
-                        barRef.current.style.width = '0%';
-                    }
-                });
-            });
-        }
-    }, [liveToast]);
+        const id = setTimeout(() => {
+            setVisible(false)
+            setTimeout(onDismiss, 300)
+        }, duration)
+        return () => clearTimeout(id)
+    }, [duration, onDismiss])
 
-    if (!liveToast) return null;
-
-    const theme = TYPE_COLORS[liveToast.type] || TYPE_COLORS.match;
+    const colors = {
+        info: { bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.3)', color: 'var(--blue)' },
+        success: { bg: 'rgba(34,197,94,0.15)', border: 'rgba(34,197,94,0.3)', color: 'var(--accent)' },
+        warning: { bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.3)', color: 'var(--amber)' },
+        error: { bg: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.3)', color: 'var(--red)' },
+    }
+    const c = colors[type] || colors.info
 
     return (
-        <div
-            style={{
-                position: 'fixed', bottom: 20, right: 20,
-                width: 300, zIndex: 999,
-                background: 'rgba(8,14,26,0.95)',
-                backdropFilter: 'blur(20px)',
-                border: `1px solid ${theme.border}`,
-                borderRadius: 14,
-                overflow: 'hidden',
-                animation: 'toast-in 0.45s cubic-bezier(0.34,1.56,0.64,1)',
-            }}
-        >
-            <div style={{ padding: '14px 18px 12px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
-                        <span style={{
-                            display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
-                            background: theme.color, boxShadow: `0 0 8px ${theme.color}`,
-                            flexShrink: 0, marginTop: 1,
-                        }} />
-                        <span style={{ fontSize: 12, fontWeight: 700, color: theme.color }}>
-                            {liveToast.title}
-                        </span>
-                    </div>
-                    <button
-                        onClick={dismissToast}
-                        style={{
-                            background: 'none', border: 'none', color: 'rgba(240,244,255,0.3)',
-                            cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0,
-                        }}
-                    >
-                        ×
-                    </button>
-                </div>
-                <div style={{ fontSize: 11, color: 'rgba(240,244,255,0.6)', lineHeight: 1.6 }}>
-                    {liveToast.body}
-                </div>
+        <div style={{
+            position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+            background: c.bg, border: `1px solid ${c.border}`,
+            borderRadius: 12, padding: '12px 16px',
+            maxWidth: 340, backdropFilter: 'blur(8px)',
+            opacity: visible ? 1 : 0,
+            transform: visible ? 'translateY(0)' : 'translateY(8px)',
+            transition: 'opacity 0.3s, transform 0.3s',
+            display: 'flex', alignItems: 'flex-start', gap: 10,
+        }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0, marginTop: 4 }} />
+            <div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{message.title}</div>
+                {message.body && (
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{message.body}</div>
+                )}
             </div>
-            {/* Progress bar */}
-            <div style={{ height: 2, background: 'rgba(255,255,255,0.06)' }}>
-                <div
-                    ref={barRef}
-                    style={{ height: '100%', background: theme.color, width: '100%' }}
-                />
-            </div>
+            <button
+                onClick={() => { setVisible(false); setTimeout(onDismiss, 300) }}
+                style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', marginLeft: 'auto', fontSize: 14, lineHeight: 1 }}
+            >✕</button>
         </div>
-    );
+    )
 }

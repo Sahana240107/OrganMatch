@@ -1,198 +1,254 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import MatchCard from '../components/ui/MatchCard';
-import OrganPill from '../components/ui/OrganPill';
-import ScoreBar from '../components/ui/ScoreBar';
-import { useApi } from '../hooks/useApi';
-import { ORGAN_TYPES, MATCH_WEIGHTS } from '../utils/constants';
-import { formatDistance } from '../utils/formatters';
+import { useState, useEffect } from 'react'
+import { useApi } from '../hooks/useApi'
+import OrganPill from '../components/ui/OrganPill'
+import ScoreBar from '../components/ui/ScoreBar'
+import HLAInput from '../components/forms/HLAInput'
+import KPICard from '../components/ui/KPICard'
+import { urgencyClass } from '../utils/formatters'
+import { URGENCY_LABELS } from '../utils/constants'
 
-const MOCK_ORGAN = {
-    id: 29, code: 'DH-2024-029', organId: 'kidney_l',
-    donor: { name: 'Arjun Sharma', blood: 'O+', hospital: 'PGIMER Chandigarh', city: 'Chandigarh' },
-    remainingHours: 18.1, maxHours: 36,
-    hla: { A1: '02', A2: '24', B7: '07', B8: '08', DR3: '03', DR4: '04' },
-};
+const BREAKDOWN_KEYS   = ['score_hla','score_abo','score_urgency','score_wait_time','score_distance','score_pra','score_age']
+const BREAKDOWN_LABELS = { score_hla:'HLA Match', score_abo:'ABO', score_urgency:'Urgency', score_wait_time:'Wait Time', score_distance:'Distance', score_pra:'PRA Bonus', score_age:'Age Match' }
+const BREAKDOWN_COLORS = { score_hla:'var(--accent)', score_abo:'var(--teal)', score_urgency:'var(--red)', score_wait_time:'var(--blue)', score_distance:'var(--purple)', score_pra:'var(--amber)', score_age:'var(--coral)' }
+const RANK_CLS         = ['rank-1','rank-2','rank-3']
 
-const MOCK_MATCHES = [
-    {
-        rank: 1, recipientId: 101,
-        recipient: { name: 'Rajan Mehta', blood: 'O+', hospital: 'AIIMS Delhi', city: 'Delhi', urgency: '1A', waitDays: 412, hla: { A1: '02', A2: '24', B7: '07', B8: '08', DR3: '03', DR4: '04' } },
-        scores: { total: 94.2, abo: 100, hla: 100, urgency: 100, distance: 72, waitTime: 80 },
-        distance: 267,
-    },
-    {
-        rank: 2, recipientId: 102,
-        recipient: { name: 'Anita Sharma', blood: 'O+', hospital: 'Fortis Gurgaon', city: 'Gurgaon', urgency: '1B', waitDays: 280, hla: { A1: '02', A2: '11', B7: '07', B8: '44', DR3: '03', DR4: '07' } },
-        scores: { total: 87.8, abo: 100, hla: 67, urgency: 75, distance: 80, waitTime: 65 },
-        distance: 230,
-    },
-    {
-        rank: 3, recipientId: 103,
-        recipient: { name: 'Vikram Nair', blood: 'A+', hospital: 'Max Delhi', city: 'Delhi', urgency: '1B', waitDays: 190, hla: { A1: '03', A2: '24', B7: '07', B8: '35', DR3: '11', DR4: '04' } },
-        scores: { total: 81.4, abo: 80, hla: 50, urgency: 75, distance: 70, waitTime: 50 },
-        distance: 271,
-    },
-    {
-        rank: 4, recipientId: 104,
-        recipient: { name: 'Meera Patel', blood: 'O-', hospital: 'Apollo Delhi', city: 'Delhi', urgency: '2', waitDays: 520, hla: { A1: '02', A2: '24', B7: '07', B8: '08', DR3: '01', DR4: '04' } },
-        scores: { total: 76.1, abo: 85, hla: 83, urgency: 50, distance: 68, waitTime: 90 },
-        distance: 258,
-    },
-    {
-        rank: 5, recipientId: 105,
-        recipient: { name: 'Suresh Kumar', blood: 'B+', hospital: 'Medanta', city: 'Gurgaon', urgency: '2', waitDays: 145, hla: { A1: '01', A2: '24', B7: '07', B8: '57', DR3: '03', DR4: '13' } },
-        scores: { total: 68.3, abo: 0, hla: 33, urgency: 50, distance: 75, waitTime: 35 },
-        distance: 240,
-    },
-];
+function hlaLabel(n) {
+  if (n >= 6) return { cls: 'hla-full',    text: `${n}/8 HLA` }
+  if (n >= 3) return { cls: 'hla-partial', text: `${n}/8 HLA` }
+  return             { cls: 'hla-none',    text: `${n}/8 HLA` }
+}
+
+function Spinner() {
+  return <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading…</div>
+}
 
 export default function MatchingEngine() {
-    const { organId } = useParams();
-    const navigate = useNavigate();
-    const { get, post, loading } = useApi();
+  const { request } = useApi()
 
-    const [organ, setOrgan] = useState(MOCK_ORGAN);
-    const [matches, setMatches] = useState(MOCK_MATCHES);
-    const [selected, setSelected] = useState(null);
-    const [sending, setSending] = useState(false);
-    const [filterBlood, setFilterBlood] = useState('all');
+  const [availableOrgans, setAvailableOrgans] = useState([])
+  const [selectedOrganId, setSelectedOrganId] = useState('')
+  const [candidates,      setCandidates]      = useState([])
+  const [selected,        setSelected]        = useState(null)
+  const [breakdown,       setBreakdown]       = useState(null)
+  const [hlaValue,        setHlaValue]        = useState({})
+  const [kpis,            setKpis]            = useState(null)
+  const [loading,         setLoading]         = useState(false)
+  const [organsLoading,   setOrgansLoading]   = useState(true)
+  const [error,           setError]           = useState('')
 
-    useEffect(() => {
-        if (organId) {
-            get(`/match/${organId}`).then(res => {
-                if (res?.success) { setOrgan(res.data.organ); setMatches(res.data.matches); }
-            });
+  // Load available organs and KPIs on mount
+  useEffect(() => {
+    async function load() {
+      try {
+        const [organData, kpiData] = await Promise.all([
+          request('GET', '/api/donors/organs?status=available'),
+          request('GET', '/api/analytics/matching-kpis'),
+        ])
+        const organs = organData?.organs || []
+        setAvailableOrgans(organs)
+        setKpis(kpiData)
+        if (organs.length) setSelectedOrganId(organs[0].organ_id)
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setOrgansLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  // Load match candidates when organ selection changes
+  useEffect(() => {
+    if (!selectedOrganId) return
+    async function loadMatches() {
+      setLoading(true)
+      setError('')
+      setCandidates([])
+      setSelected(null)
+      setBreakdown(null)
+      try {
+        const data = await request('GET', `/api/matches/organ/${selectedOrganId}`)
+        const list = data?.matches || []
+        setCandidates(list)
+        if (list.length) {
+          setSelected(list[0])
+          // Load donor HLA for top match organ
+          const donorHla = await request('GET', `/api/donors/${list[0].donor_id}/hla`)
+          setHlaValue(donorHla?.hla || {})
         }
-    }, [organId, get]);
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadMatches()
+  }, [selectedOrganId])
 
-    const handleSendOffer = useCallback(async (recipientId) => {
-        setSending(true);
-        const res = await post('/offers', { organId: organ.id, recipientId });
-        setSending(false);
-        if (res?.success) navigate(`/offers/${res.data.offerId}`);
-    }, [organ, post, navigate]);
+  // Load score breakdown when a candidate is selected
+  useEffect(() => {
+    if (!selected?.match_id) return
+    request('GET', `/api/matches/${selected.match_id}/breakdown`)
+      .then(data => setBreakdown(data?.breakdown || null))
+      .catch(() => setBreakdown(null))
+  }, [selected])
 
-    const filtered = filterBlood === 'all'
-        ? matches
-        : matches.filter(m => m.recipient.blood === filterBlood);
+  async function handleSendOffer(match) {
+    try {
+      const deadline = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
+      await request('POST', '/api/offers', {
+        match_id:              match.match_id,
+        organ_id:              match.organ_id,
+        recipient_id:          match.recipient_id,
+        offering_hospital_id:  match.donor_hospital_id,
+        receiving_hospital_id: match.recipient_hospital_id,
+        response_deadline:     deadline,
+      })
+      // Refresh matches
+      const data = await request('GET', `/api/matches/organ/${selectedOrganId}`)
+      setCandidates(data?.matches || [])
+    } catch (e) {
+      alert('Failed to send offer: ' + e.message)
+    }
+  }
 
-    const bloodGroups = ['all', ...new Set(matches.map(m => m.recipient.blood))];
+  const selectedOrgan = availableOrgans.find(o => o.organ_id === Number(selectedOrganId))
 
-    return (
-        <div className="matching-page">
-            {/* Header */}
-            <div className="mp-header">
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                    <div>
-                        <div className="mp-title">Organ Matching Engine</div>
-                        <div className="mp-sub">
-                            Ranked recipients for{' '}
-                            <OrganPill organId={organ.organId} size="sm" />
-                            {' '}— Donor code <strong style={{ color: 'var(--text)' }}>{organ.code}</strong>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => navigate('/donors/register')}
-                        className="btn-secondary"
-                        style={{ padding: '8px 18px', fontSize: 12 }}
-                    >
-                        + New Organ
-                    </button>
-                </div>
-            </div>
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 20 }}>
+        <KPICard label="Organs Available" value={kpis?.available_organs ?? '—'} color="blue" />
+        <KPICard label="Match Rate"       value={kpis?.match_rate       ?? '—'} color="green" />
+        <KPICard label="Avg Match Score"  value={kpis?.avg_score        ?? '—'} color="amber" />
+      </div>
 
-            {/* Organ info bar */}
-            <div style={{
-                background: 'var(--surface)', border: '1px solid var(--border)',
-                borderRadius: 14, padding: '16px 20px', marginBottom: 24,
-                display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 16,
-            }}>
-                {[
-                    { label: 'Donor', value: organ.donor?.name },
-                    { label: 'Blood Type', value: organ.donor?.blood },
-                    { label: 'Hospital', value: organ.donor?.hospital },
-                    { label: 'Viability', value: `${organ.remainingHours}h left`, color: organ.remainingHours < 6 ? '#e05c3a' : '#30d9a0' },
-                    { label: 'Organ', value: ORGAN_TYPES.find(o => o.id === organ.organId)?.label || organ.organId },
-                ].map(item => (
-                    <div key={item.label}>
-                        <div style={{ fontSize: 10, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{item.label}</div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: item.color || 'var(--text)' }}>{item.value}</div>
-                    </div>
+      <div className="grid-2-1">
+        <div>
+          <div className="flex items-center justify-between mb-12">
+            <span style={{ fontSize: 14, fontWeight: 600 }}>
+              Ranked Matches{selectedOrgan ? ` — ${selectedOrgan.organ_type} ORG-${selectedOrgan.organ_id}` : ''}
+            </span>
+            {organsLoading ? (
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>Loading organs…</span>
+            ) : (
+              <select
+                className="form-control"
+                style={{ width: 'auto', fontSize: 12, padding: '6px 10px' }}
+                value={selectedOrganId}
+                onChange={e => setSelectedOrganId(e.target.value)}
+              >
+                {availableOrgans.map(o => (
+                  <option key={o.organ_id} value={o.organ_id}>
+                    {o.organ_type} · ORG-{o.organ_id}
+                  </option>
                 ))}
-            </div>
-
-            {/* HLA row */}
-            <div style={{
-                background: 'var(--surface)', border: '1px solid var(--border)',
-                borderRadius: 12, padding: '14px 20px', marginBottom: 24,
-            }}>
-                <div style={{ fontSize: 11, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
-                    Donor HLA Profile
-                </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                    {Object.entries(organ.hla || {}).map(([ag, val]) => (
-                        <div key={ag} style={{ textAlign: 'center', background: 'rgba(79,156,249,0.06)', borderRadius: 8, padding: '6px 14px' }}>
-                            <div style={{ fontSize: 10, color: 'var(--faint)', marginBottom: 3 }}>{ag}</div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: '#4f9cf9' }}>{val}</div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Filter bar */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                <div style={{ fontSize: 12, color: 'var(--muted)', marginRight: 4 }}>Filter:</div>
-                {bloodGroups.map(bg => (
-                    <button
-                        key={bg}
-                        onClick={() => setFilterBlood(bg)}
-                        style={{
-                            padding: '5px 14px', borderRadius: 20, fontSize: 11, fontWeight: 500,
-                            cursor: 'pointer', border: '1px solid',
-                            background: filterBlood === bg ? 'var(--accent)' : 'transparent',
-                            borderColor: filterBlood === bg ? 'transparent' : 'var(--border)',
-                            color: filterBlood === bg ? 'white' : 'var(--muted)',
-                            fontFamily: 'var(--font-body)', transition: 'all 0.15s',
-                        }}
-                    >
-                        {bg === 'all' ? 'All Blood Types' : `🩸 ${bg}`}
-                    </button>
-                ))}
-                <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--muted)' }}>
-                    {filtered.length} recipient{filtered.length !== 1 ? 's' : ''} ranked
-                </div>
-            </div>
-
-            {/* Match cards */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {filtered.map((m, i) => (
-                    <MatchCard
-                        key={m.recipientId}
-                        rank={m.rank}
-                        isTop={i === 0}
-                        donor={{
-                            ...organ.donor,
-                            organId: organ.organId,
-                            remainingHours: organ.remainingHours,
-                            maxHours: organ.maxHours,
-                            hla: organ.hla,
-                        }}
-                        recipient={{ ...m.recipient, hla: m.recipient.hla }}
-                        scores={m.scores}
-                        onOffer={() => handleSendOffer(m.recipientId)}
-                    />
-                ))}
-            </div>
-
-            {filtered.length === 0 && (
-                <div style={{
-                    textAlign: 'center', padding: 48,
-                    color: 'var(--muted)', fontSize: 14,
-                }}>
-                    No compatible recipients found for this blood type filter.
-                </div>
+                {!availableOrgans.length && <option value="">No available organs</option>}
+              </select>
             )}
+          </div>
+
+          {error && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+
+          {loading ? <Spinner /> : (
+            <>
+              {candidates.map((c, idx) => {
+                const rank    = idx + 1
+                const rankCls = RANK_CLS[idx] || 'rank-n'
+                const hla     = hlaLabel(c.hla_antigen_matches || 0)
+                const isSel   = selected?.match_id === c.match_id
+                const isTop   = rank === 1
+                return (
+                  <div
+                    key={c.match_id}
+                    className={`match-card${isTop ? ' top' : ''}`}
+                    style={isSel ? { borderColor: 'rgba(59,130,246,0.4)', background: 'rgba(59,130,246,0.05)' } : {}}
+                    onClick={() => setSelected(c)}
+                  >
+                    <div className={`rank-badge ${rankCls}`}>{rank}</div>
+                    <div style={{ flex: 1 }}>
+                      <div className="flex items-center gap-8 mb-4">
+                        <span className="fw-600" style={{ fontSize: 14 }}>R-{c.recipient_id} · {c.recipient?.full_name || '—'}</span>
+                        <span className={urgencyClass(c.recipient?.medical_urgency)}>
+                          STATUS {URGENCY_LABELS[c.recipient?.medical_urgency] || '—'}
+                        </span>
+                        {isTop && <span className="badge badge-green">Top Match</span>}
+                      </div>
+                      <div className="flex gap-12 text-sm text-muted mb-8">
+                        <span>{c.recipient?.hospital?.name || '—'}</span>
+                        <span>·</span>
+                        <span>{c.recipient?.blood_group}</span>
+                        <span>·</span>
+                        <span>{c.distance_km ? `${Math.round(c.distance_km)} km` : '—'}</span>
+                      </div>
+                      <div className="flex gap-8 items-center">
+                        <ScoreBar score={c.total_score} />
+                        <span className={`hla-match ${hla.cls}`}>{hla.text}</span>
+                      </div>
+                    </div>
+                    {isTop
+                      ? <button className="btn btn-primary" style={{ alignSelf: 'center' }} onClick={e => { e.stopPropagation(); handleSendOffer(c) }}>Send Offer</button>
+                      : <button className="btn btn-ghost"   style={{ alignSelf: 'center', fontSize: 12 }} onClick={e => { e.stopPropagation(); setSelected(c) }}>Details</button>
+                    }
+                  </div>
+                )
+              })}
+              {!candidates.length && !loading && (
+                <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 40, fontSize: 13 }}>
+                  No compatible recipients found for this organ
+                </div>
+              )}
+            </>
+          )}
         </div>
-    );
+
+        <div className="flex flex-col gap-16">
+          {/* Score breakdown */}
+          <div className="card">
+            <div className="card-header">
+              <span className="card-title">Score Breakdown{selected ? ` · R-${selected.recipient_id}` : ''}</span>
+            </div>
+            <div style={{ padding: '16px 18px' }}>
+              {!selected ? (
+                <div style={{ color: 'var(--text3)', fontSize: 12, textAlign: 'center', padding: 16 }}>Select a candidate</div>
+              ) : breakdown ? (
+                <>
+                  {BREAKDOWN_KEYS.map(k => {
+                    const val = breakdown[k] || 0
+                    const abs = Math.abs(val)
+                    const pct = Math.min(100, (abs / 30) * 100)
+                    const neg = val < 0
+                    return (
+                      <div key={k} className="flex items-center gap-10 mb-10">
+                        <span style={{ fontSize: 12, color: 'var(--text2)', minWidth: 90 }}>{BREAKDOWN_LABELS[k]}</span>
+                        <div className="score-bar" style={{ flex: 1 }}>
+                          <div className="score-bar-fill" style={{ width: `${pct}%`, background: neg ? 'var(--red)' : BREAKDOWN_COLORS[k] }} />
+                        </div>
+                        <span className="score-val" style={{ color: neg ? 'var(--red)' : BREAKDOWN_COLORS[k] }}>
+                          {neg ? val : `+${val}`}
+                        </span>
+                      </div>
+                    )
+                  })}
+                  <div className="score-total-box">
+                    <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 4 }}>TOTAL SCORE</div>
+                    <div className="score-total-val">{Number(selected.total_score).toFixed(1)}</div>
+                  </div>
+                </>
+              ) : (
+                <Spinner />
+              )}
+            </div>
+          </div>
+
+          {/* HLA typing */}
+          <div className="card">
+            <div className="card-header"><span className="card-title">HLA Typing — Donor</span></div>
+            <div style={{ padding: 12 }}>
+              <HLAInput value={hlaValue} onChange={setHlaValue} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
