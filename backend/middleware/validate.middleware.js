@@ -32,9 +32,23 @@ const donorSchema = Joi.object({
   hospital_id:   Joi.number().integer().positive().required(),
   cause_of_death: Joi.string().valid(
     'traumatic_brain_injury','stroke','anoxia','other_cns','living_donor'
-  ).optional().allow(null),
+  ).optional().allow(null,''),
   medical_history: Joi.string().optional().allow('', null),
-});
+  brain_death_time: Joi.string().optional().allow('', null),
+  // HLA fields (go into donor_hla_typing table)
+  hla_a1: Joi.string().optional().allow('',null),
+  hla_a2: Joi.string().optional().allow('',null),
+  hla_b1: Joi.string().optional().allow('',null),
+  hla_b2: Joi.string().optional().allow('',null),
+  hla_dr1: Joi.string().optional().allow('',null),
+  hla_dr2: Joi.string().optional().allow('',null),
+  hla_dq1: Joi.string().optional().allow('',null),
+  hla_dq2: Joi.string().optional().allow('',null),
+  // Nested objects from frontend
+  hla_typing: Joi.object().optional(),
+  serology:   Joi.object().optional(),
+  organs:     Joi.array().items(Joi.string()).optional(),
+}).options({ allowUnknown: true });
 
 const recipientSchema = Joi.object({
   full_name:        Joi.string().min(2).max(150).required(),

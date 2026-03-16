@@ -63,4 +63,28 @@ const runMatching = async (req, res) => {
   }
 };
 
-module.exports = { getMatches, runMatching };
+const getRecentMatches = async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT mr.match_id, mr.organ_id, mr.recipient_id, mr.total_score,
+             mr.rank_position, mr.status, mr.computed_at,
+             o.organ_type, d.donor_id,
+             r.medical_urgency,
+             h.name AS hospital
+      FROM match_results mr
+      JOIN organs     o  ON mr.organ_id     = o.organ_id
+      JOIN donors     d  ON o.donor_id      = d.donor_id
+      JOIN recipients r  ON mr.recipient_id = r.recipient_id
+      JOIN hospitals  h  ON r.hospital_id   = h.hospital_id
+      WHERE mr.rank_position = 1
+      ORDER BY mr.computed_at DESC
+      LIMIT 10
+    `);
+    return res.status(200).json({ matches: rows });
+  } catch (err) {
+    console.error('getRecentMatches error:', err);
+    return res.status(500).json({ error: 'Failed to fetch recent matches.' });
+  }
+};
+
+module.exports = { getMatches, runMatching, getRecentMatches };

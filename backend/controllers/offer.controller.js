@@ -244,4 +244,33 @@ const declineOffer = async (req, res) => {
   }
 };
 
-module.exports = { sendOffer, acceptOffer, declineOffer };
+const getPendingOffers = async (req, res) => {
+  const { limit = 20, organ_id } = req.query;
+  try {
+    let where = "WHERE o.status = 'pending'";
+    const params = [];
+    if (organ_id) { where += ' AND o.organ_id = ?'; params.push(organ_id); }
+    params.push(parseInt(limit));
+
+    const [rows] = await pool.query(`
+      SELECT o.offer_id, o.organ_id, o.recipient_id,
+             o.status, o.offered_at, o.response_deadline, o.cascade_round,
+             JSON_OBJECT('organ_type', org.organ_type, 'donor_id', org.donor_id) AS organ,
+             r.full_name AS recipient_name, r.blood_group,
+             rh.name AS receiving_hospital
+      FROM offers o
+      JOIN organs     org ON o.organ_id     = org.organ_id
+      JOIN recipients r   ON o.recipient_id = r.recipient_id
+      JOIN hospitals  rh  ON o.receiving_hospital_id = rh.hospital_id
+      ${where}
+      ORDER BY o.response_deadline ASC
+      LIMIT ?
+    `, params);
+
+    return res.status(200).json({ offers: rows });
+  } catch (err) {
+    console.error('getPendingOffers error:', err);
+    return res.status(500).json({ error: 'Failed to fetch pending offers.' });
+  }
+};
+module.exports = { sendOffer, acceptOffer, declineOffer, getPendingOffers };

@@ -65,4 +65,24 @@ const getBloodBank = async (req, res) => {
   }
 };
 
-module.exports = { getHospitals, getCapabilities, getBloodBank };
+const getNetwork = async (req, res) => {
+  try {
+    const [hospitals] = await pool.query(`
+      SELECT h.hospital_id, h.name, h.city, h.state,
+             h.latitude, h.longitude, h.level,
+             hc.icu_beds_total, hc.icu_beds_available
+      FROM hospitals h
+      LEFT JOIN hospital_capacity hc ON hc.hospital_id = h.hospital_id
+      WHERE h.is_active = 1
+    `);
+    const [routes] = await pool.query(`
+      SELECT from_hospital_id, to_hospital_id, distance_km, best_hours
+      FROM transport_routes
+    `);
+    return res.status(200).json({ hospitals, routes });
+  } catch (err) {
+    console.error('getNetwork error:', err);
+    return res.status(500).json({ error: 'Failed to fetch network.' });
+  }
+};
+module.exports = { getHospitals, getCapabilities, getBloodBank, getNetwork };

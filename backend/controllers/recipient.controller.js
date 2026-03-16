@@ -97,7 +97,7 @@ const getWaitingList = async (req, res) => {
     }
 
     const [rows] = await pool.query(query, params);
-    return res.status(200).json({ data: rows, count: rows.length });
+    return res.status(200).json({ recipients: rows, count: rows.length });
   } catch (err) {
     console.error('getWaitingList error:', err);
     return res.status(500).json({ error: 'Failed to fetch waiting list.' });
@@ -131,4 +131,56 @@ const updateUrgency = async (req, res) => {
   }
 };
 
-module.exports = { createRecipient, getWaitingList, updateUrgency };
+// GET /api/recipients  — paginated, with filters
+const getRecipients = async (req, res) => {
+  const { page = 1, limit = 20, search, organ_needed, medical_urgency, blood_group } = req.query;
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+
+  try {
+    let where = 'WHERE 1=1';
+    const params = [];
+
+    if (search) {
+      where += ' AND (r.full_name LIKE ? OR r.recipient_id = ?)';
+      params.push(`%${search}%`, parseInt(search) || 0);
+    }
+    if (organ_needed)    { where += ' AND r.organ_needed = ?';    params.push(organ_needed); }
+    if (medical_urgency) { where += ' AND r.medical_urgency = ?'; params.push(medical_urgency); }
+    if (blood_group)     { where += ' AND r.blood_group = ?';     params.push(blood_group); }
+
+    if (req.user.role === 'hospital_staff') {
+      where += ' AND r.hospital_id = ?';
+      params.push(req.user.hospital_id);
+    }
+
+    const countParams = [...params];
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM recipients r ${where}`, countParams
+    );
+
+    params.push(parseInt(limit), offset);
+    const [rows] = await pool.query(`
+      SELECT r.recipient_id, r.full_name, r.age, r.sex, r.blood_group,
+             r.organ_needed, r.medical_urgency, r.pra_percent,
+             r.status, r.registration_date,
+             TIMESTAMPDIFF(MONTH, r.registration_date, NOW()) AS wait_months,
+             JSON_OBJECT('name', h.name, 'city', h.city) AS hospital
+      FROM recipients r
+      JOIN hospitals h ON r.hospital_id = h.hospital_id
+      ${where}
+      ORDER BY r.medical_urgency ASC, r.registration_date ASC
+      LIMIT ? OFFSET ?
+    `, params);
+
+    return res.status(200).json({
+      recipients: rows,
+      total,
+      page: parseInt(page),
+      has_more: offset + rows.length < total
+    });
+  } catch (err) {
+    console.error('getRecipients error:', err);
+    return res.status(500).json({ error: 'Failed to fetch recipients.' });
+  }
+};
+module.exports = { createRecipient, getRecipients, getWaitingList, updateUrgency };
