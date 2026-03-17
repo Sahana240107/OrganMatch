@@ -1,6 +1,3 @@
-// Key change: column is graft_status (not outcome)
-// transplant_records has composite PK (transplant_id, transplant_date) — query by transplant_id only
-
 const pool = require('../config/db');
 
 const getTransplants = async (req, res) => {
@@ -26,9 +23,14 @@ const getTransplants = async (req, res) => {
     params.push(parseInt(limit), offset);
     const [rows] = await pool.query(`
       SELECT tr.transplant_id, tr.transplant_date, tr.surgeon_name,
-             tr.graft_status, tr.cold_ischemia_hrs, tr.total_score_at_match,
+             tr.graft_status AS outcome,
+             tr.cold_ischemia_hrs,
+             ROUND(tr.cold_ischemia_hrs * 60) AS ischemic_time_minutes,
+             tr.total_score_at_match AS match_score,
              tr.rejection_episodes,
-             o.organ_type,
+             tr.donor_id, tr.recipient_id,
+             JSON_OBJECT('organ_type', o.organ_type) AS organ,
+             JSON_OBJECT('name', rh.name, 'city', rh.city) AS hospital,
              d.full_name AS donor_name, d.blood_group AS donor_blood,
              r.full_name AS recipient_name, r.blood_group AS recipient_blood,
              dh.name AS donor_hospital, rh.name AS recipient_hospital
@@ -44,7 +46,7 @@ const getTransplants = async (req, res) => {
     `, params);
 
     return res.status(200).json({
-      transplants: rows,   // frontend expects 'transplants' key
+      transplants: rows,
       total,
       page: parseInt(page),
       has_more: offset + rows.length < total
@@ -54,4 +56,5 @@ const getTransplants = async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch transplant records.' });
   }
 };
+
 module.exports = { getTransplants };

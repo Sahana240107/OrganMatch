@@ -47,6 +47,21 @@ app.use('/api/notifications', verifyJWT, notificationRoutes);
 // national_admin only
 app.use('/api/analytics',     verifyJWT, isAdmin, analyticsRoutes);
 
+app.get('/test-email', async (req, res) => {
+  try {
+    const { sendNotificationEmail } = require('./services/email.service');
+    await sendNotificationEmail(
+      'your_email@gmail.com',          // ← put your own email here
+      'OrganMatch Email Test',
+      'If you received this, your email service is working correctly!',
+      'offer_received'
+    );
+    res.json({ message: 'Test email sent! Check your inbox.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 initWebSocket(server);
 
 const PORT = process.env.PORT || 5000;

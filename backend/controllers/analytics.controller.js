@@ -1,19 +1,15 @@
-// controllers/analytics.controller.js
-// GET /api/analytics/summary — national_admin only
-// Uses the vw_analytics_summary view created by M1
-
 const pool = require('../config/db');
 
 const getSummary = async (req, res) => {
   try {
-    const [[activeOrgans]]    = await pool.query("SELECT COUNT(*) AS c FROM organs WHERE status IN ('available','offer_pending')");
-    const [[waiting]]         = await pool.query("SELECT COUNT(*) AS c FROM recipients WHERE status='waiting'");
-    const [[pendingOffers]]   = await pool.query("SELECT COUNT(*) AS c FROM offers WHERE status='pending'");
-    const [[s1a]]             = await pool.query("SELECT COUNT(*) AS c FROM recipients WHERE medical_urgency='status_1a' AND status='waiting'");
-    const [[s1b]]             = await pool.query("SELECT COUNT(*) AS c FROM recipients WHERE medical_urgency='status_1b' AND status='waiting'");
-    const [[transplants]]     = await pool.query("SELECT COUNT(*) AS c FROM transplant_records");
-    const [[donors]]          = await pool.query("SELECT COUNT(*) AS c FROM donors");
-    const [byOrganType]       = await pool.query(`
+    const [[activeOrgans]]  = await pool.query("SELECT COUNT(*) AS c FROM organs WHERE status IN ('available','offer_pending')");
+    const [[waiting]]       = await pool.query("SELECT COUNT(*) AS c FROM recipients WHERE status='waiting'");
+    const [[pendingOffers]] = await pool.query("SELECT COUNT(*) AS c FROM offers WHERE status='pending'");
+    const [[s1a]]           = await pool.query("SELECT COUNT(*) AS c FROM recipients WHERE medical_urgency='status_1a' AND status='waiting'");
+    const [[s1b]]           = await pool.query("SELECT COUNT(*) AS c FROM recipients WHERE medical_urgency='status_1b' AND status='waiting'");
+    const [[transplants]]   = await pool.query("SELECT COUNT(*) AS c FROM transplant_records");
+    const [[donors]]        = await pool.query("SELECT COUNT(*) AS c FROM donors");
+    const [byOrganType]     = await pool.query(`
       SELECT o.organ_type, COUNT(*) AS count
       FROM transplant_records tr
       JOIN organs o ON tr.organ_id = o.organ_id
@@ -21,15 +17,13 @@ const getSummary = async (req, res) => {
     `);
 
     return res.status(200).json({
-      // Dashboard KPI cards
-      active_organs:      activeOrgans.c,
-      waiting_recipients: waiting.c,
-      pending_offers:     pendingOffers.c,
-      status_1a:          s1a.c,
-      status_1b:          s1b.c,
-      // Extra
-      total_donors:       donors.c,
-      total_transplants:  transplants.c,
+      active_organs:        activeOrgans.c,
+      waiting_recipients:   waiting.c,
+      pending_offers:       pendingOffers.c,
+      status_1a:            s1a.c,
+      status_1b:            s1b.c,
+      total_donors:         donors.c,
+      total_transplants:    transplants.c,
       transplants_by_organ: byOrganType,
     });
   } catch (err) {
@@ -49,18 +43,17 @@ const getTrends = async (req, res) => {
       ORDER BY transplant_date ASC
     `);
     const [donors] = await pool.query(`
-  SELECT DATE_FORMAT(DATE(created_at), '%d %b') AS label,
-         COUNT(*) AS donors
-  FROM donors
-  WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-  GROUP BY DATE(created_at), DATE_FORMAT(DATE(created_at), '%d %b')
-  ORDER BY DATE(created_at) ASC
-`);
-    // Merge by label
+      SELECT DATE_FORMAT(DATE(created_at), '%d %b') AS label,
+             COUNT(*) AS donors
+      FROM donors
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+      GROUP BY DATE(created_at), DATE_FORMAT(DATE(created_at), '%d %b')
+      ORDER BY DATE(created_at) ASC
+    `);
     const trend = daily.map(d => ({
-      label: d.label,
+      label:       d.label,
       transplants: d.transplants,
-      donors: donors.find(x => x.label === d.label)?.donors || 0
+      donors:      donors.find(x => x.label === d.label)?.donors || 0
     }));
     const [organCounts] = await pool.query(`
       SELECT o.organ_type, COUNT(*) AS count
@@ -78,11 +71,10 @@ const getTrends = async (req, res) => {
 const getMatchingKpis = async (req, res) => {
   try {
     const [[stats]] = await pool.query(`
-      SELECT
-        COUNT(*) AS total_matches,
-        AVG(total_score) AS avg_score,
-        SUM(ischemic_time_feasible = 1) AS feasible_matches,
-        AVG(distance_km) AS avg_distance_km
+      SELECT COUNT(*) AS total_matches,
+             AVG(total_score) AS avg_score,
+             SUM(ischemic_time_feasible = 1) AS feasible_matches,
+             AVG(distance_km) AS avg_distance_km
       FROM match_results
     `);
     return res.status(200).json({ data: stats });
@@ -92,8 +84,19 @@ const getMatchingKpis = async (req, res) => {
   }
 };
 
+// GET /api/analytics/transplant-summary
+// Returns: total, survival_rate, avg_ischemic_hours, graft_failures, by_organ, by_month
 const getTransplantSummary = async (req, res) => {
   try {
+    const [[totals]] = await pool.query(`
+      SELECT
+        COUNT(*)                                                        AS total,
+        ROUND(SUM(graft_status = 'functioning') / COUNT(*) * 100, 1)  AS survival_rate,
+        ROUND(AVG(cold_ischemia_hrs), 1)                               AS avg_ischemic_hours,
+        SUM(graft_status IN ('graft_failure','rejected'))              AS graft_failures
+      FROM transplant_records
+    `);
+
     const [byOrgan] = await pool.query(`
       SELECT o.organ_type, COUNT(*) AS count,
              SUM(tr.graft_status = 'functioning') AS successful
@@ -101,13 +104,22 @@ const getTransplantSummary = async (req, res) => {
       JOIN organs o ON tr.organ_id = o.organ_id
       GROUP BY o.organ_type
     `);
+
     const [byMonth] = await pool.query(`
       SELECT DATE_FORMAT(transplant_date, '%Y-%m') AS month,
              COUNT(*) AS count
       FROM transplant_records
       GROUP BY month ORDER BY month DESC LIMIT 12
     `);
-    return res.status(200).json({ by_organ: byOrgan, by_month: byMonth });
+
+    return res.status(200).json({
+      total:              totals.total,
+      survival_rate:      totals.survival_rate,
+      avg_ischemic_hours: totals.avg_ischemic_hours,
+      graft_failures:     totals.graft_failures,
+      by_organ:           byOrgan,
+      by_month:           byMonth
+    });
   } catch (err) {
     console.error('getTransplantSummary error:', err);
     return res.status(500).json({ error: 'Failed to fetch transplant summary.' });
@@ -124,15 +136,12 @@ const getWaitingListCounts = async (req, res) => {
       FROM recipients WHERE status = 'waiting'
       GROUP BY organ_needed
     `);
-
-    // Build flat object: { kidney: 3, kidney_avg_wait: 12, heart: 1, ... }
     const counts = {};
     rows.forEach(r => {
-      counts[r.organ_type] = r.count;
+      counts[r.organ_type]              = r.count;
       counts[`${r.organ_type}_avg_wait`] = Math.round(r.avg_wait || 0);
       counts[`${r.organ_type}_critical`] = r.critical;
     });
-
     return res.status(200).json({ counts, by_organ: rows });
   } catch (err) {
     console.error('getWaitingListCounts error:', err);
@@ -142,7 +151,7 @@ const getWaitingListCounts = async (req, res) => {
 
 const getFull = async (req, res) => {
   try {
-    const [[summary]]  = await pool.query('SELECT * FROM vw_analytics_summary LIMIT 1').catch(() => [[{}]]);
+    const [[summary]]    = await pool.query('SELECT * FROM vw_analytics_summary LIMIT 1').catch(() => [[{}]]);
     const [topHospitals] = await pool.query(`
       SELECT h.name AS hospital, COUNT(*) AS transplants,
              ROUND(SUM(tr.graft_status='functioning')/COUNT(*)*100,1) AS success_rate

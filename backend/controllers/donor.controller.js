@@ -8,9 +8,9 @@ const createDonor = async (req, res) => {
     weight_kg, height_cm, hospital_id, cause_of_death,
     medical_history, brain_death_time,
     hla_a1, hla_a2, hla_b1, hla_b2, hla_dr1, hla_dr2, hla_dq1, hla_dq2,
-    hla_typing,   // nested object from frontend { hla_a1, hla_a2, ... }
-    serology,     // nested object from frontend { hiv_status, hepatitis_b, ... }
-    organs        // array from frontend ['kidney', 'heart', ...]
+    hla_typing,
+    serology,
+    organs
   } = req.body;
 
   const effectiveHospitalId =
@@ -25,7 +25,6 @@ const createDonor = async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    // 1. Insert donor
     const [result] = await conn.query(
       `INSERT INTO donors
         (donor_type, full_name, age, sex, blood_group, weight_kg, height_cm,
@@ -41,7 +40,6 @@ const createDonor = async (req, res) => {
     );
     const donorId = result.insertId;
 
-    // 2. Insert HLA typing — support both flat fields and nested hla_typing object
     const hla = hla_typing || {};
     const a1  = hla_a1  || hla.hla_a1  || null;
     const a2  = hla_a2  || hla.hla_a2  || null;
@@ -52,7 +50,6 @@ const createDonor = async (req, res) => {
     const dq1 = hla_dq1 || hla.hla_dq1 || null;
     const dq2 = hla_dq2 || hla.hla_dq2 || null;
 
-    // Always insert HLA row (even if all null) to satisfy FK relationships
     await conn.query(
       `INSERT INTO donor_hla_typing
         (donor_id, hla_a1, hla_a2, hla_b1, hla_b2, hla_dr1, hla_dr2, hla_dq1, hla_dq2)
@@ -60,7 +57,6 @@ const createDonor = async (req, res) => {
       [donorId, a1, a2, b1, b2, dr1, dr2, dq1, dq2]
     );
 
-    // 3. Insert serology
     const ser = serology || {};
     await conn.query(
       `INSERT INTO donor_serology
@@ -75,7 +71,6 @@ const createDonor = async (req, res) => {
        ser.ebv_status   || 'unknown']
     );
 
-    // 4. Insert organs array — each organ triggers match_organ() via DB trigger
     const organList = Array.isArray(organs) ? organs : [];
     const harvestTime = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const insertedOrgans = [];
@@ -93,7 +88,6 @@ const createDonor = async (req, res) => {
 
     await conn.commit();
 
-    // Broadcast after commit so DB trigger has already fired match_organ()
     broadcast('donor_registered', {
       donor_id: donorId,
       full_name,
@@ -119,31 +113,102 @@ const createDonor = async (req, res) => {
   }
 };
 
-// GET /api/donors
+// GET /api/donors — paginated with filters, returns { donors, total, has_more }
 const getDonors = async (req, res) => {
+  const { page = 1, limit = 20, search, donor_type, blood_group } = req.query;
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+
   try {
-    let query = `
-      SELECT d.donor_id, d.full_name, d.donor_type, d.blood_group,
-             d.age, d.sex, d.status, d.created_at, h.name AS hospital_name
-      FROM donors d
-      JOIN hospitals h ON d.hospital_id = h.hospital_id
-    `;
+    let where = 'WHERE 1=1';
     const params = [];
+
+    if (search) {
+      where += ' AND (d.full_name LIKE ? OR d.donor_id = ?)';
+      params.push(`%${search}%`, parseInt(search) || 0);
+    }
+    if (donor_type)  { where += ' AND d.donor_type = ?';  params.push(donor_type); }
+    if (blood_group) { where += ' AND d.blood_group = ?'; params.push(blood_group); }
+
     if (req.user.role === 'hospital_staff') {
-      query += ' WHERE d.hospital_id = ?';
+      where += ' AND d.hospital_id = ?';
       params.push(req.user.hospital_id);
     }
-    query += ' ORDER BY d.created_at DESC LIMIT 100';
 
-    const [rows] = await pool.query(query, params);
-    return res.status(200).json({ data: rows });
+    const countParams = [...params];
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM donors d ${where}`, countParams
+    );
+
+    params.push(parseInt(limit), offset);
+    const [rows] = await pool.query(`
+      SELECT d.donor_id, d.full_name, d.donor_type, d.blood_group,
+             d.age, d.sex, d.status, d.created_at,
+             JSON_OBJECT('name', h.name, 'city', h.city) AS hospital,
+             (
+               SELECT JSON_ARRAYAGG(
+                 JSON_OBJECT('organ_id', o.organ_id, 'organ_type', o.organ_type, 'status', o.status)
+               )
+               FROM organs o WHERE o.donor_id = d.donor_id
+             ) AS organs
+      FROM donors d
+      JOIN hospitals h ON d.hospital_id = h.hospital_id
+      ${where}
+      ORDER BY d.created_at DESC
+      LIMIT ? OFFSET ?
+    `, params);
+
+    return res.status(200).json({
+      donors: rows,
+      total,
+      page: parseInt(page),
+      has_more: offset + rows.length < total
+    });
   } catch (err) {
     console.error('getDonors error:', err);
     return res.status(500).json({ error: 'Failed to fetch donors.' });
   }
 };
 
-// POST /api/donors/organs  (organ registration)
+// DELETE /api/donors/:id  — mark donor as withdrawn
+const withdrawDonor = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [donorRows] = await pool.query(
+      'SELECT donor_id, hospital_id, status FROM donors WHERE donor_id = ?', [id]
+    );
+    if (donorRows.length === 0) return res.status(404).json({ error: 'Donor not found.' });
+
+    if (req.user.role === 'hospital_staff' &&
+        donorRows[0].hospital_id !== req.user.hospital_id) {
+      return res.status(403).json({ error: 'You can only withdraw donors at your hospital.' });
+    }
+
+    if (donorRows[0].status === 'withdrawn') {
+      return res.status(409).json({ error: 'Donor is already withdrawn.' });
+    }
+
+    await pool.query(
+      "UPDATE donors SET status = 'withdrawn' WHERE donor_id = ?", [id]
+    );
+
+    await pool.query(
+      "UPDATE organs SET status = 'discarded' WHERE donor_id = ? AND status IN ('available','offer_pending')",
+      [id]
+    );
+
+    broadcast('donor_withdrawn', { donor_id: Number(id) });
+
+    return res.status(200).json({
+      message: 'Donor marked as withdrawn.',
+      data: { id: Number(id) }
+    });
+  } catch (err) {
+    console.error('withdrawDonor error:', err);
+    return res.status(500).json({ error: 'Failed to withdraw donor.' });
+  }
+};
+
+// POST /api/donors/organs
 const createOrgan = async (req, res) => {
   const { donor_id, organ_type, viability_hours, harvest_time, laterality, clinical_data, notes } = req.body;
 
@@ -162,8 +227,6 @@ const createOrgan = async (req, res) => {
       return res.status(403).json({ error: 'You can only add organs for donors at your hospital.' });
     }
 
-    // expires_at is computed automatically by trg_organ_before_insert trigger
-    // status starts as 'available' which fires trg_organ_after_insert → match_organ()
     const [result] = await pool.query(
       `INSERT INTO organs
         (donor_id, organ_type, laterality, harvest_time, viability_hours,
@@ -188,7 +251,7 @@ const createOrgan = async (req, res) => {
   }
 };
 
-// GET /api/donors/organs/available  — uses the vw_available_organs view
+// GET /api/donors/organs/available
 const getAvailableOrgans = async (req, res) => {
   try {
     const [rows] = await pool.query(`
@@ -256,4 +319,4 @@ const getOrgansByStatus = async (req, res) => {
   }
 };
 
-module.exports = { createDonor, getDonors, createOrgan, getAvailableOrgans, updateOrganStatus, getOrgansByStatus };
+module.exports = { createDonor, getDonors, withdrawDonor, createOrgan, getAvailableOrgans, updateOrganStatus, getOrgansByStatus };
