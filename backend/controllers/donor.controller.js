@@ -147,7 +147,11 @@ const getDonors = async (req, res) => {
              (
                SELECT GROUP_CONCAT(o.organ_type ORDER BY o.organ_id SEPARATOR ',')
                FROM organs o WHERE o.donor_id = d.donor_id
-             ) AS organs_csv
+             ) AS organs_csv,
+             (
+               SELECT COUNT(*)
+               FROM organs o WHERE o.donor_id = d.donor_id AND o.status = 'transplanted'
+             ) AS organs_donated_count
       FROM donors d
       JOIN hospitals h ON d.hospital_id = h.hospital_id
       ${where}

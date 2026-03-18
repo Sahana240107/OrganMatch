@@ -60,7 +60,7 @@ const createRecipient = async (req, res) => {
 
 // GET /api/recipients/waiting-list  — uses vw_waiting_list view
 const getWaitingList = async (req, res) => {
-  const { organ_type, blood_group } = req.query;
+  const { organ_type, blood_group, medical_urgency } = req.query;
 
   try {
     // Direct query - never uses vw_waiting_list to avoid view compatibility issues
@@ -71,8 +71,9 @@ const getWaitingList = async (req, res) => {
       where += ' AND r.hospital_id = ?';
       params.push(req.user.hospital_id);
     }
-    if (organ_type)  { where += ' AND r.organ_needed = ?';  params.push(organ_type); }
-    if (blood_group) { where += ' AND r.blood_group = ?';   params.push(blood_group); }
+    if (organ_type)      { where += ' AND r.organ_needed = ?';    params.push(organ_type); }
+    if (blood_group)     { where += ' AND r.blood_group = ?';     params.push(blood_group); }
+    if (medical_urgency) { where += ' AND r.medical_urgency = ?'; params.push(medical_urgency); }
 
     const [rows] = await pool.query(`
       SELECT
@@ -90,6 +91,11 @@ const getWaitingList = async (req, res) => {
       LEFT JOIN recipient_urgency_cache   ruc ON ruc.recipient_id = r.recipient_id
       LEFT JOIN recipient_clinical_scores rcs ON rcs.recipient_id = r.recipient_id
       WHERE ${where}
+        AND r.recipient_id IN (
+          SELECT MIN(r2.recipient_id) FROM recipients r2
+          WHERE r2.status = 'waiting'
+          GROUP BY r2.full_name, r2.organ_needed, r2.blood_group
+        )
       ORDER BY COALESCE(ruc.urgency_score, 0) DESC, r.registration_date ASC
       LIMIT 200
     `, params);
@@ -133,7 +139,8 @@ const getRecipients = async (req, res) => {
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   try {
-    let where = 'WHERE 1=1';
+    // FIX 1: always filter by status='waiting' so transplanted recipients don't corrupt MIN() dedupe
+    let where = "WHERE r.status = 'waiting'";
     const params = [];
 
     if (search) {
@@ -149,6 +156,10 @@ const getRecipients = async (req, res) => {
       params.push(req.user.hospital_id);
     }
 
+    // NO dedupe here — the recipients page shows all waiting recipients as-is.
+    // Deduplication only belongs in the waiting-list endpoint where rank ordering matters.
+    // Applying MIN(recipient_id) dedupe here was silently dropping pancreas/cornea patients
+    // whose IDs happened to be higher than other organ-type recipients.
     const countParams = [...params];
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total FROM recipients r ${where}`, countParams
@@ -179,4 +190,25 @@ const getRecipients = async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch recipients.: ' + err.message });
   }
 };
-module.exports = { createRecipient, getRecipients, getWaitingList, updateUrgency };
+// GET /api/recipients/:id — single recipient by ID
+const getRecipientById = async (req, res) => {
+  const { id } = req.params
+  try {
+    const [rows] = await pool.query(`
+      SELECT r.recipient_id, r.full_name, r.age, r.sex, r.blood_group,
+             r.organ_needed, r.medical_urgency, r.pra_percent,
+             r.status, r.registration_date,
+             h.name AS hospital_name, h.city, h.state, h.hospital_id
+      FROM recipients r
+      JOIN hospitals h ON r.hospital_id = h.hospital_id
+      WHERE r.recipient_id = ?
+    `, [id])
+    if (!rows.length) return res.status(404).json({ error: 'Recipient not found.' })
+    return res.status(200).json({ data: rows[0], recipient: rows[0] })
+  } catch (err) {
+    console.error('getRecipientById error:', err)
+    return res.status(500).json({ error: 'Failed to fetch recipient: ' + err.message })
+  }
+}
+
+module.exports = { createRecipient, getRecipients, getWaitingList, updateUrgency, getRecipientById };

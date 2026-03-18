@@ -45,7 +45,8 @@ const getTrends = async (req, res) => {
         `SELECT DATE_FORMAT(DATE(created_at),'%d %b') AS label, COUNT(*) AS donors
          FROM donors
          WHERE created_at >= DATE_SUB(NOW(), INTERVAL 365 DAY)
-         GROUP BY DATE(created_at) ORDER BY DATE(created_at) ASC`
+         GROUP BY DATE(created_at), DATE_FORMAT(DATE(created_at),'%d %b')
+         ORDER BY DATE(created_at) ASC`
       );
     } catch(e) { console.warn('trends donor query failed:', e.message); }
 

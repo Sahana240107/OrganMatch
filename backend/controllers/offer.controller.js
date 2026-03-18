@@ -49,6 +49,11 @@ const sendOffer = async (req, res) => {
       [match.organ_id]
     );
 
+    await pool.query(
+      "UPDATE match_results SET status = 'offer_sent' WHERE match_id = ?",
+      [match_id]
+    );
+
     const [coordUsers] = await pool.query(
       `SELECT user_id FROM users
        WHERE hospital_id = ? AND role IN ('transplant_coordinator','regional_admin') AND is_active = 1`,

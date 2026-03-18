@@ -9,6 +9,7 @@ import Topbar from './components/layout/Topbar'
 import Login             from './pages/Login'
 import Dashboard         from './pages/Dashboard'
 import MatchingEngine    from './pages/MatchingEngine'
+import MatchResults      from './pages/MatchResults'
 import Donors            from './pages/Donors'
 import Recipients        from './pages/Recipients'
 import WaitingList       from './pages/WaitingList'
@@ -33,6 +34,7 @@ function AppLayout() {
           <Routes>
             <Route path="/"                    element={<Dashboard />} />
             <Route path="/matching"            element={<MatchingEngine />} />
+            <Route path="/matching/results"    element={<MatchResults />} />
             <Route path="/donors"              element={<Donors />} />
             <Route path="/recipients"          element={<Recipients />} />
             <Route path="/waiting"             element={<WaitingList />} />

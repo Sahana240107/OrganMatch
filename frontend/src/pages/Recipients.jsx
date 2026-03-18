@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import OrganPill from '../components/ui/OrganPill'
@@ -19,20 +19,27 @@ export default function Recipients(){
   const [urgFilter,setUrg]=useState('')
   const [organFilter,setOrgan]=useState('')
 
-  useEffect(()=>{
-    request('GET','/api/recipients')
-      .then(d=>setRecipients(d?.recipients||d?.data||[]))
-      .catch(e=>setError(e.message))
-      .finally(()=>setLoading(false))
-  },[])
+  // FIX: fetch server-side with filters + limit:500 so ALL recipients are returned.
+  // The old code fetched once with no params (default limit=20), then tried to filter
+  // locally — meaning only the first 20 recipients ever loaded. Pancreas/cornea
+  // patients beyond position 20 never appeared at all.
+  const fetchRecipients = useCallback(() => {
+    setLoading(true)
+    const params = { limit: 500 }
+    if (organFilter)  params.organ_needed    = organFilter
+    if (urgFilter)    params.medical_urgency = urgFilter
+    if (search)       params.search          = search
+    request('GET', '/api/recipients', null, params)
+      .then(d => setRecipients(d?.recipients || d?.data || []))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [organFilter, urgFilter, search, request])
 
-  const filtered=recipients.filter(r=>{
-    const q=search.toLowerCase()
-    if(q&&!r.full_name?.toLowerCase().includes(q)&&!String(r.recipient_id).includes(q))return false
-    if(urgFilter&&r.medical_urgency!==urgFilter)return false
-    if(organFilter&&r.organ_needed!==organFilter)return false
-    return true
-  })
+  // Re-fetch whenever any filter changes; debounce search by 300ms
+  useEffect(() => {
+    const timer = setTimeout(fetchRecipients, search ? 300 : 0)
+    return () => clearTimeout(timer)
+  }, [fetchRecipients])
 
   const critical=recipients.filter(r=>r.medical_urgency==='status_1a'&&r.status==='waiting').length
 
@@ -54,19 +61,37 @@ export default function Recipients(){
 
       <div className="card">
         <div className="card-header">
-          <span className="card-title">All Recipients <span style={{color:'var(--text3)',fontWeight:400,fontSize:12}}>· {filtered.length}</span></span>
+          <span className="card-title">All Recipients <span style={{color:'var(--text3)',fontWeight:400,fontSize:12}}>· {recipients.length}</span></span>
           <div className="flex gap-8">
-            <input className="form-control" style={{width:200,fontSize:12,padding:'6px 12px'}} placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)}/>
-            <select className="form-control" style={{width:'auto',fontSize:12,padding:'6px 12px'}} value={urgFilter} onChange={e=>setUrg(e.target.value)}>
+            <input
+              className="form-control"
+              style={{width:200,fontSize:12,padding:'6px 12px'}}
+              placeholder="Search…"
+              value={search}
+              onChange={e=>setSearch(e.target.value)}
+            />
+            <select
+              className="form-control"
+              style={{width:'auto',fontSize:12,padding:'6px 12px'}}
+              value={urgFilter}
+              onChange={e=>setUrg(e.target.value)}
+            >
               <option value="">All Urgency</option>
               <option value="status_1a">Status 1A</option>
               <option value="status_1b">Status 1B</option>
               <option value="status_2">Status 2</option>
               <option value="status_3">Status 3</option>
             </select>
-            <select className="form-control" style={{width:'auto',fontSize:12,padding:'6px 12px'}} value={organFilter} onChange={e=>setOrgan(e.target.value)}>
+            <select
+              className="form-control"
+              style={{width:'auto',fontSize:12,padding:'6px 12px'}}
+              value={organFilter}
+              onChange={e=>setOrgan(e.target.value)}
+            >
               <option value="">All Organs</option>
-              {['kidney','heart','liver','lung','pancreas','cornea'].map(o=><option key={o} value={o}>{o}</option>)}
+              {['kidney','heart','liver','lung','pancreas','cornea'].map(o=>(
+                <option key={o} value={o}>{o.charAt(0).toUpperCase()+o.slice(1)}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -78,7 +103,7 @@ export default function Recipients(){
             <table>
               <thead><tr><th>ID</th><th>Name</th><th>Organ Needed</th><th>Urgency</th><th>Blood</th><th>PRA</th><th>Hospital</th><th>Waiting</th><th>Status</th></tr></thead>
               <tbody>
-                {filtered.map(r=>(
+                {recipients.map(r=>(
                   <tr key={r.recipient_id} style={{background:r.medical_urgency==='status_1a'?'#fef2f2':'',borderLeft:r.medical_urgency==='status_1a'?'3px solid #dc2626':'3px solid transparent'}}>
                     <td style={{fontFamily:'var(--mono)',fontWeight:700,fontSize:12}}>R-{r.recipient_id}</td>
                     <td><div style={{fontWeight:600,fontSize:13}}>{r.full_name}</div><div style={{fontSize:11,color:'var(--text3)'}}>{r.primary_diagnosis}</div></td>
@@ -91,7 +116,7 @@ export default function Recipients(){
                     <td><span className={`badge ${STATUS_CLS[r.status]||'badge-gray'}`}>{r.status}</span></td>
                   </tr>
                 ))}
-                {!filtered.length&&(
+                {!recipients.length&&(
                   <tr><td colSpan={9}><div className="empty-state" style={{padding:'40px 0'}}><div style={{fontSize:24}}>👥</div><div className="empty-title">No recipients found</div></div></td></tr>
                 )}
               </tbody>
