@@ -115,4 +115,81 @@ const getNetwork = async (req, res) => {
   }
 };
 
-module.exports = { getHospitals, getCapabilities, getBloodBank, getNetwork };
+
+// POST /api/hospitals
+const createHospital = async (req, res) => {
+  const {
+    name, code, address, city, state, pincode,
+    latitude, longitude, phone, email, level, is_active,
+  } = req.body;
+
+  if (!name || !code || !address || !city || !state || !pincode || !phone || !email || !latitude || !longitude) {
+    return res.status(400).json({ error: 'All required fields must be provided.' });
+  }
+
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO hospitals (name, code, address, city, state, pincode, latitude, longitude, phone, email, level, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name.trim(), code.trim().toUpperCase(), address.trim(),
+        city.trim(), state.trim(), pincode.trim(),
+        parseFloat(latitude), parseFloat(longitude),
+        phone.trim(), email.trim(),
+        level || 'level2',
+        is_active !== undefined ? is_active : 1,
+      ]
+    );
+    const [[newHosp]] = await pool.query(
+      'SELECT * FROM hospitals WHERE hospital_id = ?', [result.insertId]
+    );
+    return res.status(201).json({ message: 'Hospital created.', hospital: newHosp, data: newHosp });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'Hospital code already exists.' });
+    }
+    console.error('createHospital error:', err);
+    return res.status(500).json({ error: 'Failed to create hospital: ' + err.message });
+  }
+};
+
+
+
+// POST /api/hospitals/:id/capabilities
+const createCapability = async (req, res) => {
+  const { id } = req.params;
+  const { organ_type, can_harvest, can_transplant } = req.body;
+  if (!organ_type) return res.status(400).json({ error: 'organ_type is required.' });
+  try {
+    await pool.query(
+      `INSERT INTO hospital_capabilities (hospital_id, organ_type, can_harvest, can_transplant)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE can_harvest = VALUES(can_harvest), can_transplant = VALUES(can_transplant)`,
+      [id, organ_type, can_harvest ? 1 : 0, can_transplant ? 1 : 0]
+    );
+    return res.status(201).json({ message: 'Capability saved.' });
+  } catch (err) {
+    console.error('createCapability error:', err);
+    return res.status(500).json({ error: 'Failed to save capability: ' + err.message });
+  }
+};
+
+// POST /api/hospitals/:id/blood-bank
+const createBloodBankEntry = async (req, res) => {
+  const { id } = req.params;
+  const { blood_group, units_available } = req.body;
+  if (!blood_group) return res.status(400).json({ error: 'blood_group is required.' });
+  try {
+    await pool.query(
+      `INSERT INTO blood_bank_inventory (hospital_id, blood_group, units_available)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE units_available = VALUES(units_available), last_updated = NOW()`,
+      [id, blood_group, parseInt(units_available) || 0]
+    );
+    return res.status(201).json({ message: 'Blood bank entry saved.' });
+  } catch (err) {
+    console.error('createBloodBankEntry error:', err);
+    return res.status(500).json({ error: 'Failed to save blood bank entry: ' + err.message });
+  }
+};
+module.exports = { getHospitals, getCapabilities, getBloodBank, getNetwork, createHospital, createCapability, createBloodBankEntry };

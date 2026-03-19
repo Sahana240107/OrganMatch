@@ -89,23 +89,46 @@ export default function Topbar({ path }) {
         <div className="topbar-actions">
           <button
             className="icon-btn"
-            title="Register Donor"
-            onClick={() => navigate('/register-donor')}
+            title="Register Recipient"
+            onClick={() => navigate('/register-recipient')}
           >
             <svg viewBox="0 0 20 20" fill="currentColor">
               <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/>
             </svg>
           </button>
 
+          {/* Notification bell — always last, with badge */}
           <button
             className="icon-btn"
             title="Notifications"
             onClick={() => navigate('/notifications')}
+            style={{ position: 'relative' }}
           >
             <svg viewBox="0 0 20 20" fill="currentColor">
               <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/>
             </svg>
-            {unreadCount > 0 && <span className="notif-dot" />}
+            {unreadCount > 0 && (
+              <span className="notif-dot" style={{
+                position: 'absolute', top: 4, right: 4,
+                width: 8, height: 8, borderRadius: '50%',
+                background: 'var(--red)',
+                border: '1.5px solid var(--surface)',
+                display: 'block',
+              }}/>
+            )}
+            {unreadCount > 0 && (
+              <span style={{
+                position: 'absolute', top: -2, right: -2,
+                background: 'var(--red)', color: 'white',
+                fontSize: 9, fontWeight: 700,
+                borderRadius: 10, padding: '1px 4px',
+                lineHeight: 1.4, fontFamily: 'var(--mono)',
+                border: '1.5px solid var(--surface)',
+                minWidth: 16, textAlign: 'center',
+              }}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
           </button>
         </div>
       </header>

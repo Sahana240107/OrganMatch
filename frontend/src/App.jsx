@@ -6,21 +6,23 @@ import Sidebar from './components/layout/Sidebar'
 import Topbar from './components/layout/Topbar'
 
 // Pages
-import Login             from './pages/Login'
-import Dashboard         from './pages/Dashboard'
-import MatchingEngine    from './pages/MatchingEngine'
-import MatchResults      from './pages/MatchResults'
-import Donors            from './pages/Donors'
-import Recipients        from './pages/Recipients'
-import WaitingList       from './pages/WaitingList'
-import OfferWorkflow     from './pages/OfferWorkflow'
-import LocationMap       from './pages/LocationMap'
-import Hospitals         from './pages/Hospitals'
-import TransplantHistory from './pages/TransplantHistory'
-import Analytics         from './pages/Analytics'
-import Notifications     from './pages/Notifications'
-import RegisterDonor     from './pages/RegisterDonor'
-import RegisterRecipient from './pages/RegisterRecipient'
+import Login               from './pages/Login'
+import Dashboard           from './pages/Dashboard'
+import MatchingEngine      from './pages/MatchingEngine'
+import MatchResults        from './pages/MatchResults'
+import Donors              from './pages/Donors'
+import Recipients          from './pages/Recipients'
+import WaitingList         from './pages/WaitingList'
+import EmergencyAlertsPage from './pages/EmergencyAlertsPage'
+import OfferWorkflow       from './pages/OfferWorkflow'
+import LocationMap         from './pages/LocationMap'
+import Hospitals           from './pages/Hospitals'
+import BloodBank           from './pages/BloodBank'
+import TransplantHistory   from './pages/TransplantHistory'
+import Analytics           from './pages/Analytics'
+import Notifications       from './pages/Notifications'
+import RegisterDonor       from './pages/RegisterDonor'
+import RegisterRecipient   from './pages/RegisterRecipient'
 
 function AppLayout() {
   const { pathname } = useLocation()
@@ -28,9 +30,9 @@ function AppLayout() {
   return (
     <div className="app">
       <Sidebar />
-      <div className="main-area">
+      <div className="main-area" style={{ marginLeft: 0 }}>
         <Topbar path={pathname} />
-        <div className="content">
+        <div className="content" style={{ paddingLeft: 56 }}>
           <Routes>
             <Route path="/"                    element={<Dashboard />} />
             <Route path="/matching"            element={<MatchingEngine />} />
@@ -38,9 +40,11 @@ function AppLayout() {
             <Route path="/donors"              element={<Donors />} />
             <Route path="/recipients"          element={<Recipients />} />
             <Route path="/waiting"             element={<WaitingList />} />
+            <Route path="/emergency"           element={<EmergencyAlertsPage />} />
             <Route path="/offers"              element={<OfferWorkflow />} />
             <Route path="/map"                 element={<LocationMap />} />
             <Route path="/hospitals"           element={<Hospitals />} />
+            <Route path="/blood-bank"          element={<BloodBank />} />
             <Route path="/history"             element={<TransplantHistory />} />
             <Route path="/analytics"           element={<Analytics />} />
             <Route path="/notifications"       element={<Notifications />} />

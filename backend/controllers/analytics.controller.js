@@ -189,7 +189,54 @@ const getWaitingListCounts = async (req, res) => {
   }
 };
 
+
+// GET /api/analytics/need-vs-availability
+const getNeedVsAvailability = async (req, res) => {
+  try {
+    // Available organs by type
+    const [available] = await pool.query(`
+      SELECT organ_type, COUNT(*) AS available
+      FROM organs WHERE status = 'available'
+      GROUP BY organ_type
+    `);
+
+    // In-process (offer_pending / matched but not transplanted)
+    const [inProcess] = await pool.query(`
+      SELECT organ_type, COUNT(*) AS in_process
+      FROM organs WHERE status = 'offer_pending'
+      GROUP BY organ_type
+    `);
+
+    // Need = waiting recipients by organ needed
+    const [need] = await pool.query(`
+      SELECT organ_needed AS organ_type, COUNT(*) AS need
+      FROM recipients WHERE status = 'waiting'
+      GROUP BY organ_needed
+    `);
+
+    const organs = ['kidney','heart','liver','lung','pancreas','cornea','bone','small_intestine'];
+    const availMap   = Object.fromEntries(available.map(r  => [r.organ_type,  Number(r.available)]));
+    const processMap = Object.fromEntries(inProcess.map(r => [r.organ_type, Number(r.in_process)]));
+    const needMap    = Object.fromEntries(need.map(r       => [r.organ_type,  Number(r.need)]));
+
+    const result = organs
+      .filter(o => (availMap[o] || 0) > 0 || (needMap[o] || 0) > 0)
+      .map(o => ({
+        organ_type: o,
+        available:  availMap[o]   || 0,
+        in_process: processMap[o] || 0,
+        need:       needMap[o]    || 0,
+      }));
+
+    return res.status(200).json({ organ_need: result });
+  } catch (err) {
+    console.error('getNeedVsAvailability error:', err);
+    return res.status(500).json({ error: 'Failed to fetch need vs availability: ' + err.message });
+  }
+};
+
 module.exports = {
   getSummary, getTrends, getFull,
   getMatchingKpis, getTransplantSummary, getWaitingListCounts,
+  getNeedVsAvailability,
 };

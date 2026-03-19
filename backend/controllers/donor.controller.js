@@ -13,8 +13,10 @@ const createDonor = async (req, res) => {
     organs
   } = req.body;
 
+  // hospital_staff: use their own hospital_id from token
+  // others: use hospital_id from body (can be null until frontend sends it)
   const effectiveHospitalId =
-    req.user.role === 'hospital_staff' ? req.user.hospital_id : hospital_id;
+    req.user.role === 'hospital_staff' ? req.user.hospital_id : (hospital_id || null);
 
   const ORGAN_VIABILITY_HOURS = {
     heart: 4, lung: 6, liver: 12, pancreas: 12,
@@ -31,10 +33,11 @@ const createDonor = async (req, res) => {
          hospital_id, cause_of_death, medical_history, brain_death_time, registered_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [donor_type, full_name, age, sex, blood_group,
-       weight_kg || null, height_cm || null,
+       weight_kg  || null,
+       height_cm  || null,
        effectiveHospitalId,
-       cause_of_death || null,
-       medical_history || null,
+       cause_of_death   || null,
+       medical_history  || null,
        brain_death_time || null,
        req.user.user_id]
     );
@@ -63,12 +66,12 @@ const createDonor = async (req, res) => {
         (donor_id, hiv_status, hepatitis_b, hepatitis_c, syphilis, cmv_status, ebv_status)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [donorId,
-       ser.hiv_status   || 'unknown',
-       ser.hepatitis_b  || 'unknown',
-       ser.hepatitis_c  || 'unknown',
-       ser.syphilis     || 'unknown',
-       ser.cmv_status   || 'unknown',
-       ser.ebv_status   || 'unknown']
+       ser.hiv_status  || 'unknown',
+       ser.hepatitis_b || 'unknown',
+       ser.hepatitis_c || 'unknown',
+       ser.syphilis    || 'unknown',
+       ser.cmv_status  || 'unknown',
+       ser.ebv_status  || 'unknown']
     );
 
     const organList = Array.isArray(organs) ? organs : [];
@@ -167,11 +170,11 @@ const getDonors = async (req, res) => {
     });
   } catch (err) {
     console.error('getDonors error:', err);
-    return res.status(500).json({ error: 'Failed to fetch donors.: ' + err.message });
+    return res.status(500).json({ error: 'Failed to fetch donors: ' + err.message });
   }
 };
 
-// DELETE /api/donors/:id  — mark donor as withdrawn
+// DELETE /api/donors/:id — mark donor as withdrawn
 const withdrawDonor = async (req, res) => {
   const { id } = req.params;
   try {
@@ -180,8 +183,9 @@ const withdrawDonor = async (req, res) => {
     );
     if (donorRows.length === 0) return res.status(404).json({ error: 'Donor not found.' });
 
+    // FIX: cast both sides to Number to avoid string vs number mismatch
     if (req.user.role === 'hospital_staff' &&
-        donorRows[0].hospital_id !== req.user.hospital_id) {
+        Number(donorRows[0].hospital_id) !== Number(req.user.hospital_id)) {
       return res.status(403).json({ error: 'You can only withdraw donors at your hospital.' });
     }
 
@@ -206,7 +210,7 @@ const withdrawDonor = async (req, res) => {
     });
   } catch (err) {
     console.error('withdrawDonor error:', err);
-    return res.status(500).json({ error: 'Failed to withdraw donor.: ' + err.message });
+    return res.status(500).json({ error: 'Failed to withdraw donor: ' + err.message });
   }
 };
 
@@ -225,7 +229,7 @@ const createOrgan = async (req, res) => {
     if (donorRows.length === 0) return res.status(404).json({ error: 'Donor not found.' });
 
     if (req.user.role === 'hospital_staff' &&
-        donorRows[0].hospital_id !== req.user.hospital_id) {
+        Number(donorRows[0].hospital_id) !== Number(req.user.hospital_id)) {
       return res.status(403).json({ error: 'You can only add organs for donors at your hospital.' });
     }
 
@@ -233,9 +237,10 @@ const createOrgan = async (req, res) => {
       `INSERT INTO organs
         (donor_id, organ_type, laterality, harvest_time, viability_hours,
          expires_at, clinical_data, status, notes)
-       VALUES (?, ?, ?, ?, ?, '2000-01-01', ?, 'available', ?)`,
+       VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? HOUR), ?, 'available', ?)`,
+      // FIX: was hardcoded '2000-01-01' — now correctly calculates expires_at
       [donor_id, organ_type, laterality || 'na', harvest_time,
-       viability_hours,
+       viability_hours, viability_hours,
        clinical_data ? JSON.stringify(clinical_data) : null,
        notes || null]
     );
@@ -249,7 +254,7 @@ const createOrgan = async (req, res) => {
     });
   } catch (err) {
     console.error('createOrgan error:', err);
-    return res.status(500).json({ error: 'Failed to register organ.: ' + err.message });
+    return res.status(500).json({ error: 'Failed to register organ: ' + err.message });
   }
 };
 
@@ -263,11 +268,10 @@ const getAvailableOrgans = async (req, res) => {
              donor_hospital, donor_city, latitude, longitude
       FROM vw_available_organs
     `);
-    // FIX: return both 'data' and 'organs' keys — MatchingEngine/LocationMap read .organs
     return res.status(200).json({ data: rows, organs: rows });
   } catch (err) {
     console.error('getAvailableOrgans error:', err);
-    return res.status(500).json({ error: 'Failed to fetch available organs.: ' + err.message });
+    return res.status(500).json({ error: 'Failed to fetch available organs: ' + err.message });
   }
 };
 
@@ -291,17 +295,18 @@ const updateOrganStatus = async (req, res) => {
     return res.status(200).json({ message: 'Organ status updated.', data: { id: Number(id) } });
   } catch (err) {
     console.error('updateOrganStatus error:', err);
-    return res.status(500).json({ error: 'Failed to update organ status.: ' + err.message });
+    return res.status(500).json({ error: 'Failed to update organ status: ' + err.message });
   }
 };
 
+// GET /api/donors/organs?status=available
 const getOrgansByStatus = async (req, res) => {
   const { status, limit } = req.query;
   try {
     let query = `
       SELECT o.organ_id, o.organ_type, o.laterality, o.harvest_time,
              o.expires_at, o.viability_hours, o.status, o.clinical_data,
-             ROUND(TIMESTAMPDIFF(MINUTE, NOW(), o.expires_at)/60.0, 2) AS hours_remaining,
+             ROUND(TIMESTAMPDIFF(MINUTE, NOW(), o.expires_at) / 60.0, 2) AS hours_remaining,
              d.blood_group, d.blood_group AS donor_blood, d.donor_id, d.age AS donor_age,
              h.hospital_id, h.hospital_id AS donor_hospital_id,
              h.name AS donor_hospital, h.city AS donor_city, h.city, h.latitude, h.longitude
@@ -316,12 +321,14 @@ const getOrgansByStatus = async (req, res) => {
     if (limit)  { query += ' LIMIT ?'; params.push(parseInt(limit)); }
 
     const [rows] = await pool.query(query, params);
-    // FIX: return both 'data' and 'organs' keys — MatchingEngine/LocationMap read .organs
     return res.status(200).json({ data: rows, organs: rows });
   } catch (err) {
     console.error('getOrgansByStatus error:', err);
-    return res.status(500).json({ error: 'Failed to fetch organs.: ' + err.message });
+    return res.status(500).json({ error: 'Failed to fetch organs: ' + err.message });
   }
 };
 
-module.exports = { createDonor, getDonors, withdrawDonor, createOrgan, getAvailableOrgans, updateOrganStatus, getOrgansByStatus };
+module.exports = {
+  createDonor, getDonors, withdrawDonor,
+  createOrgan, getAvailableOrgans, updateOrganStatus, getOrgansByStatus
+};
