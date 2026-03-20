@@ -26,7 +26,7 @@ export default function Donors(){
   const [expanded,setExpanded]=useState(false)
 
   useEffect(()=>{
-    request('GET','/api/donors')
+    request('GET','/api/donors?limit=500&page=1')
       .then(d=>setDonors(d?.donors||d?.data||[]))
       .catch(e=>setError(e.message))
       .finally(()=>setLoading(false))

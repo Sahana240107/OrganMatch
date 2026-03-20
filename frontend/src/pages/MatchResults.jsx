@@ -273,7 +273,18 @@ export default function MatchResults() {
     setLoading(true); setError('')
     try {
       const data = await request('GET', `/api/matches/for-recipient/${recipientId}`)
-      setDonors(data?.data || [])
+      // offer_status comes from DB now — no need for local offerSent state sync
+      const rows = data?.data || []
+      // Clear offerSent for any match that now has a real offer_status from DB
+      setOfferSent(prev => {
+        const next = { ...prev }
+        Object.keys(next).forEach(mid => {
+          const row = rows.find(r => String(r.match_id) === String(mid))
+          if (row?.offer_status) delete next[mid] // DB has authoritative status now
+        })
+        return next
+      })
+      setDonors(rows)
       if (data?.recipient) setRecipient(data.recipient)
       else if ((data?.data||[]).length > 0) {
         const r = data.data[0]
@@ -442,7 +453,7 @@ export default function MatchResults() {
               const rank    = idx + 1
               const score   = Number(d.total_score || 0)
               const isTop   = rank === 1
-              const isSent  = offerSent[d.match_id]
+              const isSent  = offerSent[d.match_id] && !d.offer_status
               const hlaCount = d.hla_antigen_matches || 0
               const hoursLeft = d.hours_remaining != null ? Number(d.hours_remaining) : null
 
@@ -499,21 +510,42 @@ export default function MatchResults() {
                       </div>
                     </div>
 
-                    {/* Send Offer button */}
-                    <button
-                      onClick={() => handleSendOffer(d)}
-                      disabled={isSent || d.status === 'offer_sent'}
-                      style={{
-                        padding:'10px 18px', borderRadius:10, border:'none',
-                        cursor: (isSent || d.status === 'offer_sent') ? 'default' : 'pointer',
-                        background: (isSent || d.status === 'offer_sent') ? 'var(--bg3)' : '#3b82f6',
-                        color: (isSent || d.status === 'offer_sent') ? 'var(--text3)' : '#fff',
-                        fontWeight:700, fontSize:13, flexShrink:0, transition:'all 0.15s',
-                        display:'flex', alignItems:'center', gap:6,
-                      }}
-                    >
-                      {(isSent || d.status === 'offer_sent') ? '✓ Offer Sent' : <><span>📡</span> Send Offer</>}
-                    </button>
+                    {/* Send Offer button — reflects real DB offer status */}
+                    {(() => {
+                      const offerStatus = d.offer_status || (isSent ? 'offer_sent' : d.status)
+                      if (offerStatus === 'accepted') return (
+                        <div style={{ padding:'10px 18px', borderRadius:10, background:'rgba(34,197,94,0.12)',
+                          border:'1.5px solid rgba(34,197,94,0.4)', color:'#16a34a',
+                          fontWeight:700, fontSize:13, flexShrink:0, display:'flex', alignItems:'center', gap:6 }}>
+                          ✓ Accepted
+                        </div>
+                      )
+                      if (offerStatus === 'declined') return (
+                        <div style={{ padding:'10px 18px', borderRadius:10, background:'rgba(239,68,68,0.10)',
+                          border:'1.5px solid rgba(239,68,68,0.35)', color:'#ef4444',
+                          fontWeight:700, fontSize:13, flexShrink:0, display:'flex', alignItems:'center', gap:6 }}>
+                          ✗ Declined
+                        </div>
+                      )
+                      if (offerStatus === 'offer_sent' || offerStatus === 'pending_response') return (
+                        <div style={{ padding:'10px 18px', borderRadius:10, background:'var(--bg3)',
+                          border:'1.5px solid var(--border)', color:'var(--text3)',
+                          fontWeight:700, fontSize:13, flexShrink:0, display:'flex', alignItems:'center', gap:6 }}>
+                          📡 Offer Sent
+                        </div>
+                      )
+                      return (
+                        <button
+                          onClick={() => handleSendOffer(d)}
+                          style={{ padding:'10px 18px', borderRadius:10, border:'none',
+                            cursor:'pointer', background:'#3b82f6', color:'#fff',
+                            fontWeight:700, fontSize:13, flexShrink:0, transition:'all 0.15s',
+                            display:'flex', alignItems:'center', gap:6 }}
+                        >
+                          <span>📡</span> Send Offer
+                        </button>
+                      )
+                    })()}
                   </div>
 
                   {/* Score breakdown bars */}

@@ -193,7 +193,7 @@ const declineOffer = async (req, res) => {
 
   try {
     const [offerRows] = await pool.query(
-      `SELECT o.offer_id, o.organ_id, o.recipient_id, o.status, o.cascade_round, org.organ_type
+      `SELECT o.offer_id, o.match_id, o.organ_id, o.recipient_id, o.status, o.cascade_round, org.organ_type
        FROM offers o JOIN organs org ON o.organ_id = org.organ_id WHERE o.offer_id = ?`,
       [id]
     );
@@ -207,10 +207,22 @@ const declineOffer = async (req, res) => {
       [decline_reason, req.user.user_id, id]
     );
 
+    // Reset match_results FIRST (before organ update which fires trigger)
     await pool.query(
-      "UPDATE organs SET status='available' WHERE organ_id=? AND status='offer_pending'",
-      [offerRows[0].organ_id]
+      "UPDATE match_results SET status='pending' WHERE organ_id=? AND recipient_id=? AND status='offer_sent'",
+      [offerRows[0].organ_id, offerRows[0].recipient_id]
     );
+
+    // Disable FK checks to prevent trigger cascade conflict on organ update
+    await pool.query('SET FOREIGN_KEY_CHECKS = 0');
+    try {
+      await pool.query(
+        "UPDATE organs SET status='available' WHERE organ_id=? AND status='offer_pending'",
+        [offerRows[0].organ_id]
+      );
+    } finally {
+      await pool.query('SET FOREIGN_KEY_CHECKS = 1');
+    }
 
     const [nextMatch] = await pool.query(
       `SELECT mr.match_id, mr.recipient_id, mr.recipient_hospital_id, mr.rank_position

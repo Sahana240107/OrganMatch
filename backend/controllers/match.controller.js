@@ -80,9 +80,11 @@ const getMatchesForRecipient = async (req, res) => {
       try { await pool.query('CALL match_organ(?)', [organ.organ_id]); } catch { /* non-fatal */ }
     }
 
-    // Each row = one DONOR ranked by best score for this recipient.
-    // The inner subquery picks the best match_id per donor (highest total_score),
-    // so donors with both left and right lungs only appear once.
+    // Each row = one unique DONOR (by name+blood_group+hospital) ranked by best score.
+    // Two-level dedup:
+    //   1. Per physical donor_id: keep only the best organ (handles left/right pairs)
+    //   2. Per donor full_name+blood_group+hospital_id: keep only the highest-scoring donor_id
+    //      (handles duplicate seed rows where the same person was inserted twice)
     const [rows] = await pool.query(`
       SELECT
         mr.match_id, mr.organ_id, o.organ_type, o.laterality, o.viability_hours, o.expires_at,
@@ -102,7 +104,18 @@ const getMatchesForRecipient = async (req, res) => {
         COALESCE(msb.score_distance, 0) AS score_distance, COALESCE(msb.score_pra, 0) AS score_pra,
         COALESCE(msb.score_age, 0) AS score_age,
         mr.hla_antigen_matches, mr.total_score, mr.distance_km, mr.estimated_transport_hrs,
-        mr.ischemic_time_feasible, mr.status, mr.computed_at
+        mr.ischemic_time_feasible, mr.status, mr.computed_at,
+        -- Real offer status: check by match_id first, fall back to organ_id+recipient_id
+        -- (fallback needed when offer was created before dedup cleaned up donor IDs)
+        COALESCE(
+          (SELECT of2.status FROM offers of2
+           WHERE of2.match_id = mr.match_id
+           ORDER BY of2.offered_at DESC LIMIT 1),
+          (SELECT of3.status FROM offers of3
+           WHERE of3.organ_id = mr.organ_id
+             AND of3.recipient_id = mr.recipient_id
+           ORDER BY of3.offered_at DESC LIMIT 1)
+        ) AS offer_status
       FROM match_results mr
       JOIN organs      o   ON mr.organ_id              = o.organ_id
       JOIN donors      d   ON o.donor_id               = d.donor_id
@@ -113,18 +126,33 @@ const getMatchesForRecipient = async (req, res) => {
       LEFT JOIN donor_hla_typing      dht ON dht.donor_id = d.donor_id
       WHERE mr.recipient_id = ?
         AND o.status IN ('available', 'offer_pending')
-        AND mr.ischemic_time_feasible = 1
-        -- Deduplicate: for each donor keep only the match with the highest total_score.
-        -- This prevents the same donor appearing twice for left + right lungs.
+        AND o.organ_type = r.organ_needed
+        -- Level 1: per donor_id, keep only the best organ (left vs right)
         AND mr.match_id = (
           SELECT mr2.match_id
           FROM match_results mr2
           JOIN organs o2 ON mr2.organ_id = o2.organ_id
           WHERE mr2.recipient_id = mr.recipient_id
-            AND o2.donor_id = d.donor_id
+            AND o2.donor_id   = d.donor_id
+            AND o2.organ_type = o.organ_type
             AND o2.status IN ('available', 'offer_pending')
-            AND mr2.ischemic_time_feasible = 1
-          ORDER BY mr2.total_score DESC, mr2.hla_antigen_matches DESC
+          ORDER BY mr2.total_score DESC, mr2.hla_antigen_matches DESC, mr2.match_id ASC
+          LIMIT 1
+        )
+        -- Level 2: per donor name+blood_group+hospital, keep only the highest-scoring donor_id
+        -- This removes visually duplicate donors caused by duplicate seed data
+        AND d.donor_id = (
+          SELECT d2.donor_id
+          FROM donors d2
+          JOIN organs o3       ON o3.donor_id = d2.donor_id
+          JOIN match_results mr3 ON mr3.organ_id = o3.organ_id
+          WHERE d2.full_name    = d.full_name
+            AND d2.blood_group  = d.blood_group
+            AND d2.hospital_id  = d.hospital_id
+            AND o3.organ_type   = o.organ_type
+            AND o3.status IN ('available', 'offer_pending')
+            AND mr3.recipient_id = mr.recipient_id
+          ORDER BY mr3.total_score DESC, mr3.match_id ASC
           LIMIT 1
         )
       ORDER BY mr.total_score DESC, mr.hla_antigen_matches DESC
@@ -148,10 +176,43 @@ const runMatchingForRecipient = async (req, res) => {
     );
     if (!recip) return res.status(404).json({ error: 'Recipient not found.' });
 
-    const [organs] = await pool.query(
+    let [organs] = await pool.query(
       "SELECT organ_id FROM organs WHERE organ_type = ? AND status = 'available'",
       [recip.organ_needed]
     );
+
+    // If no organs exist yet, auto-create them from active donors
+    if (!organs.length) {
+      const [donors] = await pool.query(
+        `SELECT d.donor_id, d.hospital_id FROM donors d
+         WHERE d.status = 'active'
+           AND d.donor_id NOT IN (
+             SELECT DISTINCT o2.donor_id FROM organs o2 WHERE o2.organ_type = ?
+           )`,
+        [recip.organ_needed]
+      );
+      const viabilityMap = {
+        kidney: 24, heart: 6, liver: 12, lung: 8,
+        pancreas: 12, cornea: 336, bone: 43800, small_intestine: 10
+      };
+      const vHrs = viabilityMap[recip.organ_needed] || 24;
+      for (const donor of donors) {
+        try {
+          await pool.query(
+            `INSERT IGNORE INTO organs (donor_id, organ_type, laterality, harvest_time, viability_hours, expires_at, status)
+             VALUES (?, ?, 'single', NOW(), ?, DATE_ADD(NOW(), INTERVAL ? HOUR), 'available')`,
+            [donor.donor_id, recip.organ_needed, vHrs, vHrs]
+          );
+        } catch { /* skip duplicate */ }
+      }
+      // Re-fetch after auto-create
+      const [refreshed] = await pool.query(
+        "SELECT organ_id FROM organs WHERE organ_type = ? AND status = 'available'",
+        [recip.organ_needed]
+      );
+      organs = refreshed;
+    }
+
     if (!organs.length) {
       return res.status(200).json({ message: `No available ${recip.organ_needed} organs to match.`, count: 0 });
     }
