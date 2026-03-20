@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { broadcast } = require('../websocket/notifier');
+const { sendNotificationEmail } = require('../services/email.service');
 
 function parseJson(val) {
   if (!val || typeof val === 'object') return val || {};
@@ -82,6 +83,42 @@ const sendOffer = async (req, res) => {
       response_deadline: responseDeadline
     });
 
+    // ── EMAIL: notify donor hospital that an offer has been sent for their organ ──
+    try {
+      const [donorHospitalUsers] = await pool.query(
+        `SELECT u.email, u.full_name, h.name AS hospital_name
+         FROM users u
+         JOIN hospitals h ON u.hospital_id = h.hospital_id
+         WHERE u.hospital_id = ?
+           AND u.role IN ('transplant_coordinator', 'regional_admin', 'national_admin')
+           AND u.is_active = 1
+           AND u.email IS NOT NULL AND u.email != ''`,
+        [match.donor_hospital_id]
+      );
+
+      const deadline = responseDeadline.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+      for (const user of donorHospitalUsers) {
+        await sendNotificationEmail(
+          user.email,
+          `Organ Offer Sent — ${match.organ_type?.toUpperCase()} #${match.organ_id}`,
+          `Dear ${user.full_name || 'Coordinator'},\n\n` +
+          `An offer has been sent to a recipient hospital for one of your donor's organs.\n\n` +
+          `Offer Details:\n` +
+          `  • Organ Type    : ${match.organ_type?.toUpperCase()}\n` +
+          `  • Organ ID      : #${match.organ_id}\n` +
+          `  • Offer ID      : #${offerId}\n` +
+          `  • Response By   : ${deadline}\n\n` +
+          `The receiving hospital must accept or decline before the deadline. ` +
+          `You will be notified of their decision.\n\n` +
+          `Log in to OrganMatch to track this offer.`,
+          'offer_received'
+        );
+      }
+    } catch (emailErr) {
+      console.error('[email] Failed to send donor offer notification:', emailErr.message);
+    }
+
     return res.status(201).json({
       message: 'Offer sent successfully.',
       data: { id: offerId, offer_id: offerId, response_deadline: responseDeadline }
@@ -117,7 +154,42 @@ const acceptOffer = async (req, res) => {
     if (new Date(offer.response_deadline) < new Date())
       return res.status(410).json({ error: 'Offer has expired.' });
 
-    await pool.query('CALL accept_offer(?, ?, ?)', [offer.offer_id, req.user.user_id, surgeon_name]);
+    // Inline replacement for missing accept_offer() stored procedure.
+    // Fetches donor_id and hospital IDs from organs/donors, then inserts the transplant record.
+    const [[organDetail]] = await pool.query(
+      `SELECT o.donor_id, o.organ_type,
+              d.hospital_id  AS donor_hospital_id,
+              TIMESTAMPDIFF(HOUR, o.harvest_time, NOW()) AS cold_ischemia_hrs,
+              mr.total_score
+       FROM organs o
+       JOIN donors d ON o.donor_id = d.donor_id
+       LEFT JOIN match_results mr ON mr.organ_id = o.organ_id
+                                  AND mr.recipient_id = ?
+       WHERE o.organ_id = ?
+       LIMIT 1`,
+      [offer.recipient_id, offer.organ_id]
+    );
+
+    await pool.query(
+      `INSERT INTO transplant_records
+         (offer_id, organ_id, donor_id, recipient_id,
+          donor_hospital_id, recipient_hospital_id,
+          transplant_date, surgeon_name,
+          cold_ischemia_hrs, total_score_at_match,
+          graft_status)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, 'functioning')`,
+      [
+        offer.offer_id,
+        offer.organ_id,
+        organDetail.donor_id,
+        offer.recipient_id,
+        organDetail.donor_hospital_id,
+        offer.receiving_hospital_id,
+        surgeon_name,
+        organDetail.cold_ischemia_hrs ?? 0,
+        organDetail.total_score ?? null
+      ]
+    );
 
     // Permanently lock organ — never reusable
     await pool.query("UPDATE organs SET status = 'transplanted' WHERE organ_id = ?", [offer.organ_id]);
@@ -170,14 +242,82 @@ const acceptOffer = async (req, res) => {
       organ_type: offer.organ_type, recipient_id: offer.recipient_id
     });
 
+    // ── EMAIL: notify recipient hospital that their organ request has been accepted ──
+    try {
+      const [recipientHospitalUsers] = await pool.query(
+        `SELECT u.email, u.full_name, h.name AS hospital_name
+         FROM users u
+         JOIN hospitals h ON u.hospital_id = h.hospital_id
+         WHERE u.hospital_id = ?
+           AND u.role IN ('transplant_coordinator', 'regional_admin', 'national_admin')
+           AND u.is_active = 1
+           AND u.email IS NOT NULL AND u.email != ''`,
+        [offer.receiving_hospital_id]
+      );
+
+      for (const user of recipientHospitalUsers) {
+        await sendNotificationEmail(
+          user.email,
+          `Organ Request Accepted — ${offer.organ_type?.toUpperCase()} for ${offer.recipient_name}`,
+          `Dear ${user.full_name || 'Coordinator'},\n\n` +
+          `Great news! The organ offer for your patient has been accepted and the transplant is now confirmed.\n\n` +
+          `Transplant Details:\n` +
+          `  • Organ Type  : ${offer.organ_type?.toUpperCase()}\n` +
+          `  • Organ ID    : #${offer.organ_id}\n` +
+          `  • Offer ID    : #${id}\n` +
+          `  • Recipient   : ${offer.recipient_name}\n` +
+          `  • Donor       : ${offer.donor_name}\n` +
+          (surgeon_name ? `  • Surgeon     : ${surgeon_name}\n` : '') +
+          `\nPlease coordinate with your surgical team for organ arrival and transplant scheduling.\n` +
+          `Log in to OrganMatch to view the full transplant record.`,
+          'offer_accepted'
+        );
+      }
+    } catch (emailErr) {
+      console.error('[email] Failed to send recipient accept notification:', emailErr.message);
+    }
+
+    // ── EMAIL: notify donor hospital that their donor's organ has been successfully donated ──
+    try {
+      const [donorHospitalUsers] = await pool.query(
+        `SELECT u.email, u.full_name, h.name AS hospital_name
+         FROM users u
+         JOIN hospitals h ON u.hospital_id = h.hospital_id
+         WHERE u.hospital_id = ?
+           AND u.role IN ('transplant_coordinator', 'regional_admin', 'national_admin')
+           AND u.is_active = 1
+           AND u.email IS NOT NULL AND u.email != ''`,
+        [offer.offering_hospital_id]
+      );
+
+      for (const user of donorHospitalUsers) {
+        await sendNotificationEmail(
+          user.email,
+          `Organ Successfully Donated — ${offer.organ_type?.toUpperCase()} from ${offer.donor_name}`,
+          `Dear ${user.full_name || 'Coordinator'},\n\n` +
+          `We are pleased to inform you that the organ from your donor has been successfully matched and the transplant is now confirmed.\n\n` +
+          `Donation Details:\n` +
+          `  • Donor Name  : ${offer.donor_name}\n` +
+          `  • Organ Type  : ${offer.organ_type?.toUpperCase()}\n` +
+          `  • Organ ID    : #${offer.organ_id}\n` +
+          `  • Offer ID    : #${id}\n` +
+          (surgeon_name ? `  • Surgeon     : ${surgeon_name}\n` : '') +
+          `\nThe donor's gift of life has been honoured. The organ has been marked as transplanted in the system.\n` +
+          `Thank you for facilitating this life-saving donation.\n\n` +
+          `Log in to OrganMatch to view the complete transplant record.`,
+          'organ_transplanted_donor'
+        );
+      }
+    } catch (emailErr) {
+      console.error('[email] Failed to send donor transplant notification:', emailErr.message);
+    }
+
     return res.status(200).json({
       message: 'Offer accepted. Organ marked transplanted.',
       data: { id: Number(id) }
     });
   } catch (err) {
     console.error('acceptOffer error:', err);
-    if (err.code === 'ER_SP_DOES_NOT_EXIST')
-      return res.status(503).json({ error: 'accept_offer() SP not found. Run organmatch_complete.sql.' });
     if (err.sqlState === '45000')
       return res.status(409).json({ error: err.message });
     return res.status(500).json({ error: 'Failed to accept offer: ' + err.message });
@@ -262,6 +402,52 @@ const declineOffer = async (req, res) => {
       });
     } else {
       broadcast('offer_declined', { offer_id: Number(id) });
+    }
+
+    // ── EMAIL: notify the original recipient hospital that their request was declined ──
+    try {
+      const [offerDetail] = await pool.query(
+        `SELECT o.receiving_hospital_id, r.full_name AS recipient_name,
+                org.organ_type
+         FROM offers o
+         JOIN recipients r   ON o.recipient_id = r.recipient_id
+         JOIN organs     org ON o.organ_id      = org.organ_id
+         WHERE o.offer_id = ?`,
+        [id]
+      );
+
+      if (offerDetail.length > 0) {
+        const detail = offerDetail[0];
+        const [recipientHospitalUsers] = await pool.query(
+          `SELECT u.email, u.full_name
+           FROM users u
+           WHERE u.hospital_id = ?
+             AND u.role IN ('transplant_coordinator', 'regional_admin', 'national_admin')
+             AND u.is_active = 1
+             AND u.email IS NOT NULL AND u.email != ''`,
+          [detail.receiving_hospital_id]
+        );
+
+        for (const user of recipientHospitalUsers) {
+          await sendNotificationEmail(
+            user.email,
+            `Organ Request Declined — ${detail.organ_type?.toUpperCase()} for ${detail.recipient_name}`,
+            `Dear ${user.full_name || 'Coordinator'},\n\n` +
+            `We regret to inform you that the organ offer for your patient has been declined.\n\n` +
+            `Offer Details:\n` +
+            `  • Organ Type     : ${detail.organ_type?.toUpperCase()}\n` +
+            `  • Offer ID       : #${id}\n` +
+            `  • Recipient      : ${detail.recipient_name}\n` +
+            `  • Decline Reason : ${decline_reason}\n\n` +
+            `The patient remains on the waiting list and will be considered for future matches. ` +
+            `Our matching engine will continue to search for compatible organs.\n\n` +
+            `Log in to OrganMatch to view the current waiting list status.`,
+            'offer_declined'
+          );
+        }
+      }
+    } catch (emailErr) {
+      console.error('[email] Failed to send recipient decline notification:', emailErr.message);
     }
 
     return res.status(200).json({
